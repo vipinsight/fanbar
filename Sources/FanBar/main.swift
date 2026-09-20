@@ -19,8 +19,14 @@ private enum FanPreset: Equatable {
 
 private final class StatusReadoutView: NSView {
     var readout = "--°C\n--rpm" { didSet { needsDisplay = true } }
+    var isHighlighted = false { didSet { needsDisplay = true } }
+    var onMouseDown: (() -> Void)?
 
     override func draw(_ dirtyRect: NSRect) {
+        if isHighlighted {
+            NSColor.selectedControlColor.withAlphaComponent(0.32).setFill()
+            NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: 11, yRadius: 11).fill()
+        }
         let lines = readout.split(separator: "\n", omittingEmptySubsequences: false)
         let temp = String(lines.first ?? "--°C") as NSString
         let rpm = String(lines.dropFirst().first ?? "--rpm") as NSString
@@ -41,11 +47,12 @@ private final class StatusReadoutView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        onMouseDown?()
         menu?.popUp(positioning: nil, at: NSPoint(x: 0, y: 0), in: self)
     }
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let helperSocket = "/var/run/com.webtiara.fanbar.helper.sock"
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let statusView = StatusReadoutView(frame: NSRect(x: 0, y: 0, width: 62, height: 22))
@@ -77,11 +84,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.length = 62
         statusItem.view = statusView
         statusView.menu = menu
+        statusView.onMouseDown = { [weak self] in self?.statusView.isHighlighted = true }
         statusView.toolTip = "FanBar"
     }
 
     private func configureMenu() {
         menu.autoenablesItems = false
+        menu.delegate = self
         let open = NSMenuItem(title: "Open FanBar", action: nil, keyEquivalent: "")
         open.image = nil
         menu.addItem(open)
@@ -109,6 +118,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let quit = NSMenuItem(title: "Quit FanBar", action: #selector(quit), keyEquivalent: "")
         quit.target = self
         menu.addItem(quit)
+    }
+
+    func menuDidClose(_ menu: NSMenu) {
+        statusView.isHighlighted = false
     }
 
     @objc private func selectPreset(_ sender: NSMenuItem) {
