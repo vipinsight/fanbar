@@ -59,7 +59,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var slider: NSSlider?
     private var sliderValue: NSTextField?
     private var settingsStatus: NSTextField?
-    private var customPresetItem: NSMenuItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -95,10 +94,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             menu.addItem(item)
             presetItems.append((preset, item))
         }
-        let custom = NSMenuItem(title: "Custom RPM…", action: #selector(openSettings), keyEquivalent: "")
-        custom.target = self
-        customPresetItem = custom
-        menu.addItem(custom)
         menu.addItem(.separator())
         let quit = NSMenuItem(title: "Quit FanBar", action: #selector(quit), keyEquivalent: "")
         quit.target = self
@@ -277,7 +272,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let rpm = Int(sender.doubleValue.rounded() / 100) * 100
         sliderValue?.stringValue = "\(rpm) rpm"
         preset = .target(rpm)
-        customPresetItem?.state = .on
         let result = apply(.target(rpm))
         if result != 0 { showControlError(result) }
         updateChecks()
