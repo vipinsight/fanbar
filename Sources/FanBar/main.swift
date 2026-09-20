@@ -78,7 +78,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.view = statusView
         statusView.menu = menu
         statusView.toolTip = "FanBar"
-        statusItem.menu = menu
     }
 
     private func configureMenu() {
