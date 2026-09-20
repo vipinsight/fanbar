@@ -17,45 +17,9 @@ private enum FanPreset: Equatable {
     }
 }
 
-private final class StatusReadoutView: NSView {
-    var readout = "--°C\n-- rpm" { didSet { needsDisplay = true } }
-    var isHighlighted = false { didSet { needsDisplay = true } }
-    var onMouseDown: (() -> Void)?
-
-    override func draw(_ dirtyRect: NSRect) {
-        if isHighlighted {
-            NSColor.selectedControlColor.withAlphaComponent(0.32).setFill()
-            NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: 11, yRadius: 11).fill()
-        }
-        let lines = readout.split(separator: "\n", omittingEmptySubsequences: false)
-        let temp = String(lines.first ?? "--°C") as NSString
-        let rpm = String(lines.dropFirst().first ?? "-- rpm") as NSString
-        let textRect = NSRect(x: 0, y: 1, width: 58, height: 20)
-        let tempAttributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 10, weight: .regular),
-            .foregroundColor: NSColor.labelColor
-        ]
-        let rpmAttributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 10, weight: .regular),
-            .foregroundColor: NSColor.labelColor
-        ]
-        let tempSize = temp.size(withAttributes: tempAttributes)
-        let rpmSize = rpm.size(withAttributes: rpmAttributes)
-        temp.draw(at: NSPoint(x: textRect.midX - tempSize.width / 2, y: 9), withAttributes: tempAttributes)
-        rpm.draw(at: NSPoint(x: textRect.midX - rpmSize.width / 2, y: 0), withAttributes: rpmAttributes)
-
-    }
-
-    override func mouseDown(with event: NSEvent) {
-        onMouseDown?()
-        menu?.popUp(positioning: nil, at: NSPoint(x: 0, y: 0), in: self)
-    }
-}
-
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let helperSocket = "/var/run/com.webtiara.fanbar.helper.sock"
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-    private let statusView = StatusReadoutView(frame: NSRect(x: 0, y: 0, width: 62, height: 22))
     private let menu = NSMenu()
     private var timer: Timer?
     private var preset: FanPreset = .automatic
@@ -82,10 +46,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func configureStatusItem() {
         statusItem.length = 62
-        statusItem.view = statusView
-        statusView.menu = menu
-        statusView.onMouseDown = { [weak self] in self?.statusView.isHighlighted = true }
-        statusView.toolTip = "FanBar"
+        statusItem.menu = menu
+        statusItem.button?.toolTip = "FanBar"
     }
 
     private func configureMenu() {
@@ -118,10 +80,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let quit = NSMenuItem(title: "Quit FanBar", action: #selector(quit), keyEquivalent: "")
         quit.target = self
         menu.addItem(quit)
-    }
-
-    func menuDidClose(_ menu: NSMenu) {
-        statusView.isHighlighted = false
     }
 
     @objc private func selectPreset(_ sender: NSMenuItem) {
@@ -326,7 +284,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func setTitle(_ title: String) {
-        statusView.readout = title
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        paragraph.lineSpacing = 0
+        statusItem.button?.attributedTitle = NSAttributedString(
+            string: title,
+            attributes: [
+                .font: NSFont.systemFont(ofSize: 10, weight: .regular),
+                .foregroundColor: NSColor.labelColor,
+                .paragraphStyle: paragraph
+            ]
+        )
     }
 
     private func updateChecks() {
