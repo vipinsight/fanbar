@@ -324,7 +324,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             .split(separator: "\n", omittingEmptySubsequences: false)
             .map { (String($0) as NSString).size(withAttributes: attributes).width }
             .max() ?? 0
-        statusItem.length = max(44, ceil(width) + 8)
+        statusItem.length = max(40, ceil(width) + 4)
     }
 
     private func updateChecks() {
