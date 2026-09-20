@@ -52,7 +52,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         button.font = .monospacedDigitSystemFont(ofSize: 8.5, weight: .medium)
         button.alignment = .center
         button.cell?.usesSingleLineMode = false
-        button.cell?.verticalAlignment = .center
         button.toolTip = "FanBar"
         statusItem.menu = menu
     }
