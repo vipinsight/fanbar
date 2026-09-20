@@ -204,7 +204,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func makeSettingsWindow() -> NSWindow {
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 440, height: 390), styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 440, height: 335), styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = "FanBar"
         window.center()
         window.isReleasedWhenClosed = false
@@ -256,18 +256,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         status.textColor = .secondaryLabelColor
         settingsStatus = status
 
-        let stack = NSStackView(views: [aboutTitle, about, NSView(), generalTitle, loginRow, temperatureRow, NSView(), presetTitle, value, rpmSlider, rangeRow, status])
+        let separator = NSBox()
+        separator.boxType = .separator
+        let version = NSTextField(labelWithString: "Version \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.0")")
+        version.textColor = .secondaryLabelColor
+        let github = NSButton(title: "View on GitHub", target: self, action: #selector(openGitHub))
+        github.isBordered = false
+        github.bezelStyle = .inline
+        github.contentTintColor = .controlAccentColor
+        let footer = NSStackView(views: [version, NSView(), github])
+        footer.distribution = .fill
+        footer.alignment = .centerY
+
+        let stack = NSStackView(views: [aboutTitle, about, generalTitle, loginRow, temperatureRow, presetTitle, value, rpmSlider, rangeRow, status, separator, footer])
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = 8
-        stack.edgeInsets = NSEdgeInsets(top: 22, left: 24, bottom: 22, right: 24)
+        stack.spacing = 6
+        stack.edgeInsets = NSEdgeInsets(top: 20, left: 24, bottom: 16, right: 24)
         stack.setCustomSpacing(2, after: aboutTitle)
-        stack.setCustomSpacing(14, after: about)
+        stack.setCustomSpacing(16, after: about)
         stack.setCustomSpacing(2, after: generalTitle)
-        stack.setCustomSpacing(8, after: loginRow)
-        stack.setCustomSpacing(14, after: temperatureRow)
+        stack.setCustomSpacing(4, after: loginRow)
+        stack.setCustomSpacing(12, after: temperatureRow)
         stack.setCustomSpacing(2, after: presetTitle)
         stack.setCustomSpacing(0, after: rpmSlider)
+        stack.setCustomSpacing(10, after: status)
+        stack.setCustomSpacing(8, after: separator)
         stack.translatesAutoresizingMaskIntoConstraints = false
         window.contentView = stack
         NSLayoutConstraint.activate([
@@ -279,7 +293,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             rangeRow.widthAnchor.constraint(equalToConstant: 382),
             loginRow.widthAnchor.constraint(equalToConstant: 382),
             temperatureRow.widthAnchor.constraint(equalToConstant: 382),
-            status.widthAnchor.constraint(equalToConstant: 382)
+            status.widthAnchor.constraint(equalToConstant: 382),
+            separator.widthAnchor.constraint(equalToConstant: 382),
+            footer.widthAnchor.constraint(equalToConstant: 382)
         ])
         return window
     }
@@ -315,6 +331,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             sender.state = .off
             settingsStatus?.stringValue = "Launch at login requires a bundled FanBar.app."
         }
+    }
+
+    @objc private func openGitHub() {
+        NSWorkspace.shared.open(URL(string: "https://github.com/vipinsight/fanbar")!)
     }
 
     @objc private func temperatureUnitChanged(_ sender: NSPopUpButton) {
