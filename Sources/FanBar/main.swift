@@ -86,7 +86,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let open = NSMenuItem(title: "Open FanBar", action: #selector(openSettings), keyEquivalent: "")
         open.target = self
         menu.addItem(open)
-        menu.addItem(.separator())
         let presets: [FanPreset] = [.automatic, .fullBlast, .target(1000), .target(2000), .target(4000), .target(6000)]
         for preset in presets {
             let item = NSMenuItem(title: preset.title, action: #selector(selectPreset(_:)), keyEquivalent: "")
