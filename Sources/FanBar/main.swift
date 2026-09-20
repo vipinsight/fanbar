@@ -76,7 +76,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func configureMenu() {
         menu.autoenablesItems = false
         menu.delegate = self
-        let open = NSMenuItem(title: "Open FanBar", action: nil, keyEquivalent: "")
+        let open = NSMenuItem(title: "Open FanBar", action: #selector(openSettings), keyEquivalent: "")
+        open.target = self
         open.image = nil
         menu.addItem(open)
         menu.addItem(.separator())
