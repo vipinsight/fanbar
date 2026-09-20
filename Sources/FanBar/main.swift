@@ -24,13 +24,13 @@ private final class StatusReadoutView: NSView {
         let lines = readout.split(separator: "\n", omittingEmptySubsequences: false)
         let temp = String(lines.first ?? "--°C") as NSString
         let rpm = String(lines.dropFirst().first ?? "--rpm") as NSString
-        let textRect = NSRect(x: 0, y: 1, width: 40, height: 20)
+        let textRect = NSRect(x: 0, y: 1, width: 58, height: 20)
         let tempAttributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: 9, weight: .regular),
+            .font: NSFont.systemFont(ofSize: 11, weight: .regular),
             .foregroundColor: NSColor.labelColor
         ]
         let rpmAttributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: 8.5, weight: .regular),
+            .font: NSFont.systemFont(ofSize: 10, weight: .regular),
             .foregroundColor: NSColor.labelColor
         ]
         let tempSize = temp.size(withAttributes: tempAttributes)
@@ -48,7 +48,7 @@ private final class StatusReadoutView: NSView {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let helperSocket = "/var/run/com.webtiara.fanbar.helper.sock"
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-    private let statusView = StatusReadoutView(frame: NSRect(x: 0, y: 0, width: 42, height: 22))
+    private let statusView = StatusReadoutView(frame: NSRect(x: 0, y: 0, width: 62, height: 22))
     private let menu = NSMenu()
     private var timer: Timer?
     private var preset: FanPreset = .automatic
@@ -74,7 +74,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func configureStatusItem() {
-        statusItem.length = 42
+        statusItem.length = 62
         statusItem.view = statusView
         statusView.menu = menu
         statusView.toolTip = "FanBar"
