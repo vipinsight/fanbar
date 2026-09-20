@@ -52,7 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             button.toolTip = "FanBar"
             button.title = ""
             readoutField.alignment = .center
-            readoutField.font = NSFont.systemFont(ofSize: 10, weight: .regular)
+            readoutField.font = NSFont.systemFont(ofSize: 9, weight: .regular)
             readoutField.textColor = .labelColor
             readoutField.isEditable = false
             readoutField.isSelectable = false
