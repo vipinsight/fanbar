@@ -65,7 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             button.addSubview(readoutField)
             NSLayoutConstraint.activate([
                 readoutField.centerXAnchor.constraint(equalTo: button.centerXAnchor),
-                readoutField.centerYAnchor.constraint(equalTo: button.centerYAnchor, constant: -1),
+                readoutField.centerYAnchor.constraint(equalTo: button.centerYAnchor, constant: -2),
                 readoutField.widthAnchor.constraint(equalTo: button.widthAnchor),
                 readoutField.heightAnchor.constraint(equalToConstant: 20)
             ])
