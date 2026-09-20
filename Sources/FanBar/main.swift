@@ -51,7 +51,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             button.toolTip = "FanBar"
             button.alignment = .center
             button.cell?.alignment = .center
-            button.cell?.verticalAlignment = .center
             button.cell?.usesSingleLineMode = false
             button.cell?.wraps = true
             button.cell?.lineBreakMode = .byWordWrapping
