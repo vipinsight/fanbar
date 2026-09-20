@@ -17,9 +17,42 @@ private enum FanPreset: Equatable {
     }
 }
 
+private final class StatusReadoutView: NSView {
+    var readout = "--°C\n--rpm" { didSet { needsDisplay = true } }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let lines = readout.split(separator: "\n", omittingEmptySubsequences: false)
+        let temp = String(lines.first ?? "--°C") as NSString
+        let rpm = String(lines.dropFirst().first ?? "--rpm") as NSString
+        let textRect = NSRect(x: 0, y: 1, width: 43, height: 20)
+        let tempAttributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .semibold),
+            .foregroundColor: NSColor.labelColor
+        ]
+        let rpmAttributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 8.5, weight: .medium),
+            .foregroundColor: NSColor.secondaryLabelColor
+        ]
+        let tempSize = temp.size(withAttributes: tempAttributes)
+        let rpmSize = rpm.size(withAttributes: rpmAttributes)
+        temp.draw(at: NSPoint(x: textRect.midX - tempSize.width / 2, y: 10), withAttributes: tempAttributes)
+        rpm.draw(at: NSPoint(x: textRect.midX - rpmSize.width / 2, y: 1), withAttributes: rpmAttributes)
+
+        if let image = NSImage(systemSymbolName: "fanblades.fill", accessibilityDescription: "Fan")?.withSymbolConfiguration(.init(pointSize: 15, weight: .medium)) {
+            image.isTemplate = true
+            image.draw(in: NSRect(x: 49, y: 3.5, width: 15, height: 15), from: .zero, operation: .sourceOver, fraction: 1)
+        }
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        menu?.popUp(positioning: nil, at: NSPoint(x: 0, y: 0), in: self)
+    }
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let helperSocket = "/var/run/com.webtiara.fanbar.helper.sock"
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+    private let statusView = StatusReadoutView(frame: NSRect(x: 0, y: 0, width: 76, height: 22))
     private let menu = NSMenu()
     private var timer: Timer?
     private var preset: FanPreset = .automatic
@@ -46,21 +79,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func configureStatusItem() {
-        guard let button = statusItem.button else { return }
         statusItem.length = 76
-        button.frame.size.height = 22
-        button.font = .monospacedDigitSystemFont(ofSize: 8.5, weight: .medium)
-        button.alignment = .center
-        button.cell?.usesSingleLineMode = false
-        if let fanImage = NSImage(systemSymbolName: "fanblades.fill", accessibilityDescription: "Fan") {
-            let configuration = NSImage.SymbolConfiguration(pointSize: 15, weight: .medium)
-            button.image = fanImage.withSymbolConfiguration(configuration)
-            button.image?.size = NSSize(width: 15, height: 15)
-        }
-        button.imagePosition = .imageRight
-        button.imageScaling = .scaleProportionallyDown
-        button.contentTintColor = .labelColor
-        button.toolTip = "FanBar"
+        statusItem.view = statusView
+        statusView.menu = menu
+        statusView.toolTip = "FanBar"
         statusItem.menu = menu
     }
 
@@ -289,28 +311,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func setTitle(_ title: String) {
-        guard let button = statusItem.button else { return }
-        let paragraph = NSMutableParagraphStyle()
-        paragraph.alignment = .center
-        paragraph.minimumLineHeight = 9
-        paragraph.maximumLineHeight = 10
-        paragraph.lineSpacing = 0
-        let lines = title.split(separator: "\n", omittingEmptySubsequences: false)
-        let attributed = NSMutableAttributedString()
-        let temp = String(lines.first ?? "--°C")
-        attributed.append(NSAttributedString(string: temp, attributes: [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .semibold),
-            .foregroundColor: NSColor.labelColor,
-            .paragraphStyle: paragraph
-        ]))
-        attributed.append(NSAttributedString(string: "\n", attributes: [.paragraphStyle: paragraph]))
-        let rpm = String(lines.dropFirst().first ?? "--rpm")
-        attributed.append(NSAttributedString(string: rpm, attributes: [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: 8.5, weight: .medium),
-            .foregroundColor: NSColor.secondaryLabelColor,
-            .paragraphStyle: paragraph
-        ]))
-        button.attributedTitle = attributed
+        statusView.readout = title
     }
 
     private func updateChecks() {
