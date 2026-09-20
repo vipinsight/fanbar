@@ -52,7 +52,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         button.font = .monospacedDigitSystemFont(ofSize: 8.5, weight: .medium)
         button.alignment = .center
         button.cell?.usesSingleLineMode = false
-        button.image = NSImage(systemSymbolName: "fanblades.fill", accessibilityDescription: "Fan")
+        if let fanImage = NSImage(systemSymbolName: "fanblades.fill", accessibilityDescription: "Fan") {
+            let configuration = NSImage.SymbolConfiguration(pointSize: 15, weight: .medium)
+            button.image = fanImage.withSymbolConfiguration(configuration)
+            button.image?.size = NSSize(width: 15, height: 15)
+        }
         button.imagePosition = .imageRight
         button.imageScaling = .scaleProportionallyDown
         button.contentTintColor = .labelColor
