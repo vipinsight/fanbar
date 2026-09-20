@@ -35,13 +35,9 @@ private final class StatusReadoutView: NSView {
         ]
         let tempSize = temp.size(withAttributes: tempAttributes)
         let rpmSize = rpm.size(withAttributes: rpmAttributes)
-        temp.draw(at: NSPoint(x: textRect.midX - tempSize.width / 2, y: 10), withAttributes: tempAttributes)
-        rpm.draw(at: NSPoint(x: textRect.midX - rpmSize.width / 2, y: 1), withAttributes: rpmAttributes)
+        temp.draw(at: NSPoint(x: textRect.midX - tempSize.width / 2, y: 8), withAttributes: tempAttributes)
+        rpm.draw(at: NSPoint(x: textRect.midX - rpmSize.width / 2, y: 0), withAttributes: rpmAttributes)
 
-        if let image = NSImage(systemSymbolName: "fanblades.fill", accessibilityDescription: "Fan")?.withSymbolConfiguration(.init(pointSize: 15, weight: .medium)) {
-            image.isTemplate = true
-            image.draw(in: NSRect(x: 49, y: 3.5, width: 15, height: 15), from: .zero, operation: .sourceOver, fraction: 1)
-        }
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -52,7 +48,7 @@ private final class StatusReadoutView: NSView {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let helperSocket = "/var/run/com.webtiara.fanbar.helper.sock"
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-    private let statusView = StatusReadoutView(frame: NSRect(x: 0, y: 0, width: 76, height: 22))
+    private let statusView = StatusReadoutView(frame: NSRect(x: 0, y: 0, width: 46, height: 22))
     private let menu = NSMenu()
     private var timer: Timer?
     private var preset: FanPreset = .automatic
@@ -79,7 +75,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func configureStatusItem() {
-        statusItem.length = 76
+        statusItem.length = 46
         statusItem.view = statusView
         statusView.menu = menu
         statusView.toolTip = "FanBar"
