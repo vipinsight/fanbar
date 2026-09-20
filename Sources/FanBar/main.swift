@@ -18,7 +18,7 @@ private enum FanPreset: Equatable {
 }
 
 private final class StatusReadoutView: NSView {
-    var readout = "--°C\n--rpm" { didSet { needsDisplay = true } }
+    var readout = "--°C\n-- rpm" { didSet { needsDisplay = true } }
     var isHighlighted = false { didSet { needsDisplay = true } }
     var onMouseDown: (() -> Void)?
 
@@ -29,7 +29,7 @@ private final class StatusReadoutView: NSView {
         }
         let lines = readout.split(separator: "\n", omittingEmptySubsequences: false)
         let temp = String(lines.first ?? "--°C") as NSString
-        let rpm = String(lines.dropFirst().first ?? "--rpm") as NSString
+        let rpm = String(lines.dropFirst().first ?? "-- rpm") as NSString
         let textRect = NSRect(x: 0, y: 1, width: 58, height: 20)
         let tempAttributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 10, weight: .regular),
@@ -318,10 +318,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func refresh() {
         guard fanbar_read_metrics(&metrics) == 0 else {
-            setTitle("--°C\n--rpm")
+            setTitle("--°C\n-- rpm")
             return
         }
-        setTitle(String(format: "%.0f°C\n%drpm", metrics.temperatureC, metrics.rpm))
+        setTitle(String(format: "%.0f°C\n%d rpm", metrics.temperatureC, metrics.rpm))
         updateChecks()
     }
 
