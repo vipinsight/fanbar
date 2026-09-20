@@ -47,7 +47,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func configureStatusItem() {
         statusItem.length = 62
         statusItem.menu = menu
-        statusItem.button?.toolTip = "FanBar"
+        if let button = statusItem.button {
+            button.toolTip = "FanBar"
+            button.alignment = .center
+            button.cell?.alignment = .center
+            button.cell?.verticalAlignment = .center
+            button.cell?.usesSingleLineMode = false
+            button.cell?.wraps = true
+            button.cell?.lineBreakMode = .byWordWrapping
+        }
     }
 
     private func configureMenu() {
