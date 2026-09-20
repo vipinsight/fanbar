@@ -26,12 +26,12 @@ private final class StatusReadoutView: NSView {
         let rpm = String(lines.dropFirst().first ?? "--rpm") as NSString
         let textRect = NSRect(x: 0, y: 1, width: 40, height: 20)
         let tempAttributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .semibold),
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .medium),
             .foregroundColor: NSColor.labelColor
         ]
         let rpmAttributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: 8.5, weight: .medium),
-            .foregroundColor: NSColor.secondaryLabelColor
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 9.5, weight: .medium),
+            .foregroundColor: NSColor.labelColor
         ]
         let tempSize = temp.size(withAttributes: tempAttributes)
         let rpmSize = rpm.size(withAttributes: rpmAttributes)
