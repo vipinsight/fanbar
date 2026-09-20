@@ -85,11 +85,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.autoenablesItems = false
         let open = NSMenuItem(title: "Open FanBar", action: #selector(openSettings), keyEquivalent: "")
         open.target = self
-        open.image = nil
+        // Blank image explicitly suppresses AppKit's default action image.
+        open.image = NSImage(size: NSSize(width: 1, height: 1))
         open.onStateImage = nil
         open.offStateImage = nil
         open.mixedStateImage = nil
         menu.addItem(open)
+        menu.addItem(.separator())
         let presets: [FanPreset] = [.automatic, .fullBlast, .target(1000), .target(2000), .target(4000), .target(6000)]
         for preset in presets {
             let item = NSMenuItem(title: preset.title, action: #selector(selectPreset(_:)), keyEquivalent: "")
