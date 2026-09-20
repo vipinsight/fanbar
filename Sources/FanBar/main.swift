@@ -306,7 +306,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func setTitle(_ title: String) {
-        readoutField.stringValue = title
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        paragraph.lineSpacing = -2
+        readoutField.attributedStringValue = NSAttributedString(
+            string: title,
+            attributes: [
+                .font: NSFont.systemFont(ofSize: 9, weight: .regular),
+                .foregroundColor: NSColor.labelColor,
+                .paragraphStyle: paragraph
+            ]
+        )
         let attributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 9, weight: .regular)
         ]
