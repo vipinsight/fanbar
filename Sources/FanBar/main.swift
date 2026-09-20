@@ -204,20 +204,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func makeSettingsWindow() -> NSWindow {
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 430, height: 350), styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        window.title = "FanBar Settings"
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 440, height: 390), styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        window.title = "FanBar"
         window.center()
         window.isReleasedWhenClosed = false
 
         let aboutTitle = NSTextField(labelWithString: "FanBar")
-        aboutTitle.font = .systemFont(ofSize: 24, weight: .bold)
-        let about = NSTextField(labelWithString: "Menu bar fan control for MacBook.\nReads Apple SMC temperature and fan speed.")
+        aboutTitle.font = .systemFont(ofSize: 24, weight: .semibold)
+        let about = NSTextField(labelWithString: "Menu bar fan control for MacBook.\nMonitor temperature and control fan speed.")
         about.textColor = .secondaryLabelColor
         about.maximumNumberOfLines = 2
 
         let generalTitle = NSTextField(labelWithString: "General")
         generalTitle.font = .systemFont(ofSize: 13, weight: .semibold)
-        let login = NSButton(checkboxWithTitle: "Start FanBar at system boot", target: self, action: #selector(toggleLoginItem(_:)))
+        let login = NSButton(title: "Launch FanBar at login", target: self, action: #selector(toggleLoginItem(_:)))
+        login.setButtonType(.switch)
+        login.controlSize = .regular
         loginItemCheck = login
 
         let temperatureLabel = NSTextField(labelWithString: "Temperature unit")
@@ -226,11 +228,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         temperaturePopup.target = self
         temperaturePopup.action = #selector(temperatureUnitChanged(_:))
         temperatureUnitPopup = temperaturePopup
+        temperaturePopup.widthAnchor.constraint(equalToConstant: 145).isActive = true
         let temperatureRow = NSStackView(views: [temperatureLabel, NSView(), temperaturePopup])
         temperatureRow.distribution = .fill
         temperatureRow.alignment = .centerY
 
-        let presetTitle = NSTextField(labelWithString: "Custom preset")
+        let presetTitle = NSTextField(labelWithString: "Custom fan speed")
         presetTitle.font = .systemFont(ofSize: 13, weight: .semibold)
         let value = NSTextField(labelWithString: "4000 rpm")
         value.alignment = .right
