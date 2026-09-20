@@ -95,7 +95,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         menu.addItem(.separator())
         let presetsMenu = NSMenu(title: "Presets")
-        let fixedPresets: [FanPreset] = [.target(1000), .target(2000), .target(4000), .target(6000)]
+        let fixedPresets: [FanPreset] = [.target(1000), .target(2000), .target(3000), .target(4000), .target(5000), .target(6000)]
         for preset in fixedPresets {
             let item = NSMenuItem(title: preset.title, action: #selector(selectPreset(_:)), keyEquivalent: "")
             item.target = self
