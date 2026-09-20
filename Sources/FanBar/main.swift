@@ -47,11 +47,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func configureStatusItem() {
         guard let button = statusItem.button else { return }
-        statusItem.length = 58
+        statusItem.length = 76
         button.frame.size.height = 22
         button.font = .monospacedDigitSystemFont(ofSize: 8.5, weight: .medium)
         button.alignment = .center
         button.cell?.usesSingleLineMode = false
+        button.image = NSImage(systemSymbolName: "fanblades.fill", accessibilityDescription: "Fan")
+        button.imagePosition = .imageRight
+        button.imageScaling = .scaleProportionallyDown
+        button.contentTintColor = .labelColor
         button.toolTip = "FanBar"
         statusItem.menu = menu
     }
