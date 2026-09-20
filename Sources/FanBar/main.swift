@@ -137,8 +137,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func installHelper() -> Int32 {
-        guard let helper = Bundle.main.path(forResource: "com.webtiara.fanbar.helper", ofType: nil, inDirectory: "Contents/Library/PrivilegedHelperTools"),
-              let plist = Bundle.main.path(forResource: "com.webtiara.fanbar.helper", ofType: "plist", inDirectory: "Contents/Library/LaunchDaemons") else { return -1 }
+        let bundleRoot = Bundle.main.bundleURL
+        let helper = bundleRoot.appendingPathComponent("Contents/Library/PrivilegedHelperTools/com.webtiara.fanbar.helper").path
+        let plist = bundleRoot.appendingPathComponent("Contents/Library/LaunchDaemons/com.webtiara.fanbar.helper.plist").path
+        guard FileManager.default.fileExists(atPath: helper), FileManager.default.fileExists(atPath: plist) else { return -1 }
         let command = "mkdir -p /Library/PrivilegedHelperTools /Library/LaunchDaemons && cp \(shellQuote(helper)) /Library/PrivilegedHelperTools/com.webtiara.fanbar.helper && cp \(shellQuote(plist)) /Library/LaunchDaemons/com.webtiara.fanbar.helper.plist && chown root:wheel /Library/PrivilegedHelperTools/com.webtiara.fanbar.helper /Library/LaunchDaemons/com.webtiara.fanbar.helper.plist && chmod 755 /Library/PrivilegedHelperTools/com.webtiara.fanbar.helper && (launchctl print system/com.webtiara.fanbar.helper >/dev/null 2>&1 || launchctl bootstrap system /Library/LaunchDaemons/com.webtiara.fanbar.helper.plist)"
         return runAsAdmin(command)
     }
