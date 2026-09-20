@@ -48,7 +48,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func configureStatusItem() {
         guard let button = statusItem.button else { return }
         statusItem.length = 58
-        button.font = .monospacedDigitSystemFont(ofSize: 9, weight: .medium)
+        button.frame.size.height = 22
+        button.font = .monospacedDigitSystemFont(ofSize: 8, weight: .medium)
         button.alignment = .center
         button.toolTip = "FanBar"
         statusItem.menu = menu
@@ -282,8 +283,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let button = statusItem.button else { return }
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = .center
+        paragraph.minimumLineHeight = 8
+        paragraph.maximumLineHeight = 9
+        paragraph.lineSpacing = 0
         button.attributedTitle = NSAttributedString(string: title, attributes: [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: 9, weight: .medium),
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 8, weight: .medium),
             .foregroundColor: NSColor.labelColor,
             .paragraphStyle: paragraph
         ])
