@@ -88,13 +88,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         open.image = nil
         menu.addItem(open)
         menu.addItem(.separator())
-        let presets: [FanPreset] = [.automatic, .fullBlast, .target(1000), .target(2000), .target(4000), .target(6000)]
+        let presets: [FanPreset] = [.automatic, .fullBlast]
         for preset in presets {
             let item = NSMenuItem(title: preset.title, action: #selector(selectPreset(_:)), keyEquivalent: "")
             item.target = self
             menu.addItem(item)
             presetItems.append((preset, item))
         }
+        menu.addItem(.separator())
+        let fixedPresets: [FanPreset] = [.target(1000), .target(2000), .target(4000), .target(6000)]
+        for preset in fixedPresets {
+            let item = NSMenuItem(title: preset.title, action: #selector(selectPreset(_:)), keyEquivalent: "")
+            item.target = self
+            menu.addItem(item)
+            presetItems.append((preset, item))
+        }
+        menu.addItem(.separator())
         let quit = NSMenuItem(title: "Quit FanBar", action: #selector(quit), keyEquivalent: "")
         quit.target = self
         menu.addItem(quit)
