@@ -65,7 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             button.addSubview(readoutField)
             NSLayoutConstraint.activate([
                 readoutField.centerXAnchor.constraint(equalTo: button.centerXAnchor),
-                readoutField.centerYAnchor.constraint(equalTo: button.centerYAnchor),
+                readoutField.centerYAnchor.constraint(equalTo: button.centerYAnchor, constant: -1),
                 readoutField.widthAnchor.constraint(equalTo: button.widthAnchor),
                 readoutField.heightAnchor.constraint(equalToConstant: 20)
             ])
@@ -307,6 +307,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func setTitle(_ title: String) {
         readoutField.stringValue = title
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 9, weight: .regular)
+        ]
+        let width = title
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { (String($0) as NSString).size(withAttributes: attributes).width }
+            .max() ?? 0
+        statusItem.length = max(44, ceil(width) + 8)
     }
 
     private func updateChecks() {
