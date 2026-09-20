@@ -49,8 +49,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let button = statusItem.button else { return }
         statusItem.length = 58
         button.frame.size.height = 22
-        button.font = .monospacedDigitSystemFont(ofSize: 8, weight: .medium)
+        button.font = .monospacedDigitSystemFont(ofSize: 8.5, weight: .medium)
         button.alignment = .center
+        button.cell?.usesSingleLineMode = false
+        button.cell?.verticalAlignment = .center
         button.toolTip = "FanBar"
         statusItem.menu = menu
     }
@@ -283,14 +285,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let button = statusItem.button else { return }
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = .center
-        paragraph.minimumLineHeight = 8
-        paragraph.maximumLineHeight = 9
+        paragraph.minimumLineHeight = 9
+        paragraph.maximumLineHeight = 10
         paragraph.lineSpacing = 0
-        button.attributedTitle = NSAttributedString(string: title, attributes: [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: 8, weight: .medium),
+        let lines = title.split(separator: "\n", omittingEmptySubsequences: false)
+        let attributed = NSMutableAttributedString()
+        let temp = String(lines.first ?? "--°C")
+        attributed.append(NSAttributedString(string: temp, attributes: [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .semibold),
             .foregroundColor: NSColor.labelColor,
             .paragraphStyle: paragraph
-        ])
+        ]))
+        attributed.append(NSAttributedString(string: "\n", attributes: [.paragraphStyle: paragraph]))
+        let rpm = String(lines.dropFirst().first ?? "--rpm")
+        attributed.append(NSAttributedString(string: rpm, attributes: [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 8.5, weight: .medium),
+            .foregroundColor: NSColor.secondaryLabelColor,
+            .paragraphStyle: paragraph
+        ]))
+        button.attributedTitle = attributed
     }
 
     private func updateChecks() {
