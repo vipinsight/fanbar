@@ -28,6 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var presetItems: [(FanPreset, NSMenuItem)] = []
     private var settingsWindow: NSWindow?
     private var loginItemCheck: NSButton?
+    private var temperatureUnitPopup: NSPopUpButton?
     private var slider: NSSlider?
     private var sliderValue: NSTextField?
     private var settingsStatus: NSTextField?
@@ -218,6 +219,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let login = NSButton(checkboxWithTitle: "Start FanBar at system boot", target: self, action: #selector(toggleLoginItem(_:)))
         loginItemCheck = login
 
+        let temperatureLabel = NSTextField(labelWithString: "Temperature unit")
+        let temperaturePopup = NSPopUpButton(frame: .zero, pullsDown: false)
+        temperaturePopup.addItems(withTitles: ["Celsius (°C)", "Fahrenheit (°F)"])
+        temperaturePopup.target = self
+        temperaturePopup.action = #selector(temperatureUnitChanged(_:))
+        temperatureUnitPopup = temperaturePopup
+        let temperatureRow = NSStackView(views: [temperatureLabel, NSView(), temperaturePopup])
+        temperatureRow.distribution = .fill
+        temperatureRow.alignment = .centerY
+
         let presetTitle = NSTextField(labelWithString: "Custom preset")
         presetTitle.font = .systemFont(ofSize: 13, weight: .semibold)
         let value = NSTextField(labelWithString: "4000 rpm")
@@ -237,7 +248,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         status.textColor = .secondaryLabelColor
         settingsStatus = status
 
-        let stack = NSStackView(views: [aboutTitle, about, NSView(), generalTitle, login, NSView(), presetTitle, value, rpmSlider, rangeRow, status])
+        let stack = NSStackView(views: [aboutTitle, about, NSView(), generalTitle, login, temperatureRow, NSView(), presetTitle, value, rpmSlider, rangeRow, status])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 8
@@ -245,7 +256,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         stack.setCustomSpacing(2, after: aboutTitle)
         stack.setCustomSpacing(14, after: about)
         stack.setCustomSpacing(2, after: generalTitle)
-        stack.setCustomSpacing(14, after: login)
+        stack.setCustomSpacing(8, after: login)
+        stack.setCustomSpacing(14, after: temperatureRow)
         stack.setCustomSpacing(2, after: presetTitle)
         stack.setCustomSpacing(0, after: rpmSlider)
         stack.translatesAutoresizingMaskIntoConstraints = false
@@ -257,6 +269,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             stack.bottomAnchor.constraint(equalTo: window.contentView!.bottomAnchor),
             rpmSlider.widthAnchor.constraint(equalToConstant: 382),
             rangeRow.widthAnchor.constraint(equalToConstant: 382),
+            temperatureRow.widthAnchor.constraint(equalToConstant: 382),
             status.widthAnchor.constraint(equalToConstant: 382)
         ])
         return window
@@ -264,6 +277,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func refreshSettingsControls() {
         loginItemCheck?.state = SMAppService.mainApp.status == .enabled ? .on : .off
+        temperatureUnitPopup?.selectItem(at: usesFahrenheit ? 1 : 0)
         let value = customRPM()
         slider?.doubleValue = Double(value)
         sliderValue?.stringValue = "\(value) rpm"
@@ -294,15 +308,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    @objc private func temperatureUnitChanged(_ sender: NSPopUpButton) {
+        UserDefaults.standard.set(sender.indexOfSelectedItem == 1, forKey: "usesFahrenheit")
+        refresh()
+    }
+
     @objc private func quit() { NSApp.terminate(nil) }
 
     private func refresh() {
         guard fanbar_read_metrics(&metrics) == 0 else {
-            setTitle("--°C\n-- rpm")
+            setTitle("--°\(usesFahrenheit ? "F" : "C")\n-- rpm")
             return
         }
-        setTitle(String(format: "%.0f°C\n%d rpm", metrics.temperatureC, metrics.rpm))
+        let temperature = usesFahrenheit ? (metrics.temperatureC * 9 / 5 + 32) : metrics.temperatureC
+        let unit = usesFahrenheit ? "F" : "C"
+        setTitle(String(format: "%.0f°%@\n%d rpm", temperature, unit, metrics.rpm))
         updateChecks()
+    }
+
+    private var usesFahrenheit: Bool {
+        UserDefaults.standard.bool(forKey: "usesFahrenheit")
     }
 
     private func setTitle(_ title: String) {
