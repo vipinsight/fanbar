@@ -85,6 +85,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.autoenablesItems = false
         let open = NSMenuItem(title: "Open FanBar", action: #selector(openSettings), keyEquivalent: "")
         open.target = self
+        open.image = nil
+        open.onStateImage = nil
+        open.offStateImage = nil
+        open.mixedStateImage = nil
         menu.addItem(open)
         let presets: [FanPreset] = [.automatic, .fullBlast, .target(1000), .target(2000), .target(4000), .target(6000)]
         for preset in presets {
