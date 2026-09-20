@@ -94,13 +94,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             presetItems.append((preset, item))
         }
         menu.addItem(.separator())
+        let presetsMenu = NSMenu(title: "Presets")
         let fixedPresets: [FanPreset] = [.target(1000), .target(2000), .target(4000), .target(6000)]
         for preset in fixedPresets {
             let item = NSMenuItem(title: preset.title, action: #selector(selectPreset(_:)), keyEquivalent: "")
             item.target = self
-            menu.addItem(item)
+            presetsMenu.addItem(item)
             presetItems.append((preset, item))
         }
+        let presetsItem = NSMenuItem(title: "Presets", action: nil, keyEquivalent: "")
+        presetsItem.submenu = presetsMenu
+        menu.addItem(presetsItem)
         menu.addItem(.separator())
         let quit = NSMenuItem(title: "Quit FanBar", action: #selector(quit), keyEquivalent: "")
         quit.target = self
