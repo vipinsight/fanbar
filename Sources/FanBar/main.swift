@@ -20,6 +20,7 @@ private enum FanPreset: Equatable {
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let helperSocket = "/var/run/com.webtiara.fanbar.helper.sock"
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+    private let readoutField = NSTextField(labelWithString: "--°C\n-- rpm")
     private let menu = NSMenu()
     private var timer: Timer?
     private var preset: FanPreset = .automatic
@@ -49,11 +50,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem.menu = menu
         if let button = statusItem.button {
             button.toolTip = "FanBar"
-            button.alignment = .center
-            button.cell?.alignment = .center
-            button.cell?.usesSingleLineMode = false
-            button.cell?.wraps = true
-            button.cell?.lineBreakMode = .byWordWrapping
+            button.title = ""
+            readoutField.alignment = .center
+            readoutField.font = NSFont.systemFont(ofSize: 10, weight: .regular)
+            readoutField.textColor = .labelColor
+            readoutField.isEditable = false
+            readoutField.isSelectable = false
+            readoutField.isBezeled = false
+            readoutField.drawsBackground = false
+            readoutField.usesSingleLineMode = false
+            readoutField.maximumNumberOfLines = 2
+            readoutField.lineBreakMode = .byClipping
+            readoutField.translatesAutoresizingMaskIntoConstraints = false
+            button.addSubview(readoutField)
+            NSLayoutConstraint.activate([
+                readoutField.centerXAnchor.constraint(equalTo: button.centerXAnchor),
+                readoutField.centerYAnchor.constraint(equalTo: button.centerYAnchor),
+                readoutField.widthAnchor.constraint(equalTo: button.widthAnchor),
+                readoutField.heightAnchor.constraint(equalToConstant: 20)
+            ])
         }
     }
 
@@ -291,17 +306,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func setTitle(_ title: String) {
-        let paragraph = NSMutableParagraphStyle()
-        paragraph.alignment = .center
-        paragraph.lineSpacing = 0
-        statusItem.button?.attributedTitle = NSAttributedString(
-            string: title,
-            attributes: [
-                .font: NSFont.systemFont(ofSize: 10, weight: .regular),
-                .foregroundColor: NSColor.labelColor,
-                .paragraphStyle: paragraph
-            ]
-        )
+        readoutField.stringValue = title
     }
 
     private func updateChecks() {
