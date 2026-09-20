@@ -35,7 +35,7 @@ private final class StatusReadoutView: NSView {
         ]
         let tempSize = temp.size(withAttributes: tempAttributes)
         let rpmSize = rpm.size(withAttributes: rpmAttributes)
-        temp.draw(at: NSPoint(x: textRect.midX - tempSize.width / 2, y: 8), withAttributes: tempAttributes)
+        temp.draw(at: NSPoint(x: textRect.midX - tempSize.width / 2, y: 9), withAttributes: tempAttributes)
         rpm.draw(at: NSPoint(x: textRect.midX - rpmSize.width / 2, y: 0), withAttributes: rpmAttributes)
 
     }
