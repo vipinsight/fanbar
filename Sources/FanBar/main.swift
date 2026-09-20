@@ -100,7 +100,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         customPresetItem = custom
         menu.addItem(custom)
         menu.addItem(.separator())
-        let quit = NSMenuItem(title: "Quit FanBar", action: #selector(quit), keyEquivalent: "q")
+        let quit = NSMenuItem(title: "Quit FanBar", action: #selector(quit), keyEquivalent: "")
         quit.target = self
         menu.addItem(quit)
     }
