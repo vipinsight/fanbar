@@ -27,7 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var metrics = FanBarMetrics(temperatureC: 0, rpm: 0, minimumRPM: 0, maximumRPM: 0, fanCount: 0)
     private var presetItems: [(FanPreset, NSMenuItem)] = []
     private var settingsWindow: NSWindow?
-    private var loginItemCheck: NSButton?
+    private var loginItemCheck: NSSwitch?
     private var temperatureUnitPopup: NSPopUpButton?
     private var slider: NSSlider?
     private var sliderValue: NSTextField?
@@ -217,10 +217,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         let generalTitle = NSTextField(labelWithString: "General")
         generalTitle.font = .systemFont(ofSize: 13, weight: .semibold)
-        let login = NSButton(title: "Launch FanBar at login", target: self, action: #selector(toggleLoginItem(_:)))
-        login.setButtonType(.switch)
-        login.controlSize = .regular
+        let loginLabel = NSTextField(labelWithString: "Launch FanBar at login")
+        let login = NSSwitch(frame: .zero)
+        login.target = self
+        login.action = #selector(toggleLoginItem(_:))
         loginItemCheck = login
+        let loginRow = NSStackView(views: [loginLabel, NSView(), login])
+        loginRow.distribution = .fill
+        loginRow.alignment = .centerY
 
         let temperatureLabel = NSTextField(labelWithString: "Temperature unit")
         let temperaturePopup = NSPopUpButton(frame: .zero, pullsDown: false)
@@ -252,7 +256,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         status.textColor = .secondaryLabelColor
         settingsStatus = status
 
-        let stack = NSStackView(views: [aboutTitle, about, NSView(), generalTitle, login, temperatureRow, NSView(), presetTitle, value, rpmSlider, rangeRow, status])
+        let stack = NSStackView(views: [aboutTitle, about, NSView(), generalTitle, loginRow, temperatureRow, NSView(), presetTitle, value, rpmSlider, rangeRow, status])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 8
@@ -260,7 +264,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         stack.setCustomSpacing(2, after: aboutTitle)
         stack.setCustomSpacing(14, after: about)
         stack.setCustomSpacing(2, after: generalTitle)
-        stack.setCustomSpacing(8, after: login)
+        stack.setCustomSpacing(8, after: loginRow)
         stack.setCustomSpacing(14, after: temperatureRow)
         stack.setCustomSpacing(2, after: presetTitle)
         stack.setCustomSpacing(0, after: rpmSlider)
@@ -273,6 +277,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             stack.bottomAnchor.constraint(equalTo: window.contentView!.bottomAnchor),
             rpmSlider.widthAnchor.constraint(equalToConstant: 382),
             rangeRow.widthAnchor.constraint(equalToConstant: 382),
+            loginRow.widthAnchor.constraint(equalToConstant: 382),
             temperatureRow.widthAnchor.constraint(equalToConstant: 382),
             status.widthAnchor.constraint(equalToConstant: 382)
         ])
@@ -301,7 +306,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updateChecks()
     }
 
-    @objc private func toggleLoginItem(_ sender: NSButton) {
+    @objc private func toggleLoginItem(_ sender: NSSwitch) {
         do {
             if sender.state == .on { try SMAppService.mainApp.register() }
             else { try SMAppService.mainApp.unregister() }
