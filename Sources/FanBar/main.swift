@@ -24,7 +24,7 @@ private final class StatusReadoutView: NSView {
         let lines = readout.split(separator: "\n", omittingEmptySubsequences: false)
         let temp = String(lines.first ?? "--°C") as NSString
         let rpm = String(lines.dropFirst().first ?? "--rpm") as NSString
-        let textRect = NSRect(x: 0, y: 1, width: 43, height: 20)
+        let textRect = NSRect(x: 0, y: 1, width: 40, height: 20)
         let tempAttributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .semibold),
             .foregroundColor: NSColor.labelColor
@@ -48,7 +48,7 @@ private final class StatusReadoutView: NSView {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let helperSocket = "/var/run/com.webtiara.fanbar.helper.sock"
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-    private let statusView = StatusReadoutView(frame: NSRect(x: 0, y: 0, width: 46, height: 22))
+    private let statusView = StatusReadoutView(frame: NSRect(x: 0, y: 0, width: 42, height: 22))
     private let menu = NSMenu()
     private var timer: Timer?
     private var preset: FanPreset = .automatic
@@ -75,7 +75,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func configureStatusItem() {
-        statusItem.length = 46
+        statusItem.length = 42
         statusItem.view = statusView
         statusView.menu = menu
         statusView.toolTip = "FanBar"
@@ -84,7 +84,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func configureMenu() {
         menu.autoenablesItems = false
-        menu.addItem(NSMenuItem(title: "FanBar", action: nil, keyEquivalent: ""))
+        let open = NSMenuItem(title: "Open FanBar", action: #selector(openSettings), keyEquivalent: "")
+        open.target = self
+        menu.addItem(open)
         menu.addItem(.separator())
         let presets: [FanPreset] = [.automatic, .fullBlast, .target(1000), .target(2000), .target(4000), .target(6000)]
         for preset in presets {
@@ -98,9 +100,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         customPresetItem = custom
         menu.addItem(custom)
         menu.addItem(.separator())
-        let settings = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
-        settings.target = self
-        menu.addItem(settings)
         let quit = NSMenuItem(title: "Quit FanBar", action: #selector(quit), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
