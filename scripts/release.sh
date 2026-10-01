@@ -19,7 +19,7 @@ KEY_FILE="${FANBAR_SPARKLE_KEY:-$HOME/Library/CloudStorage/OneDrive-Personal/key
 
 # Credentials come from .env.notarization (gitignored); exported variables win.
 if [ -f .env.notarization ]; then
-  while IFS= read -r line; do
+  while IFS= read -r line || [ -n "$line" ]; do
     [[ "$line" =~ ^[[:space:]]*([A-Z0-9_]+)[[:space:]]*=[[:space:]]*(.*)$ ]] || continue
     key="${BASH_REMATCH[1]}"
     value="${BASH_REMATCH[2]}"
