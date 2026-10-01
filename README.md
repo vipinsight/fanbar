@@ -1,3 +1,5 @@
+<img src="Resources/AppIcon.png" width="128" alt="FanBar icon">
+
 # FanBar
 
 Native macOS menu bar app for monitoring temperature and controlling fan speed.
