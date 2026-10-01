@@ -18,6 +18,7 @@ cp "$BIN/FanBar" "$CONTENTS/MacOS/FanBar"
 cp "$BIN/FanBarHelper" "$CONTENTS/Library/PrivilegedHelperTools/com.webtiara.fanbar.helper"
 cp Resources/com.webtiara.fanbar.helper.plist "$CONTENTS/Library/LaunchDaemons/com.webtiara.fanbar.helper.plist"
 cp Resources/Info.plist "$CONTENTS/Info.plist"
+cp Resources/AppIcon.icns "$CONTENTS/Resources/AppIcon.icns"
 ditto "$BIN/Sparkle.framework" "$CONTENTS/Frameworks/Sparkle.framework"
 install_name_tool -add_rpath @executable_path/../Frameworks "$CONTENTS/MacOS/FanBar"
 

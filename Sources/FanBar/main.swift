@@ -455,9 +455,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func makeAboutPane() -> NSView {
-        let icon = NSImageView(image: NSImage(systemSymbolName: "fan.fill", accessibilityDescription: "FanBar") ?? NSImage())
-        icon.symbolConfiguration = .init(pointSize: 36, weight: .regular)
-        icon.contentTintColor = .secondaryLabelColor
+        let icon = NSImageView(image: NSApp.applicationIconImage)
+        NSLayoutConstraint.activate([
+            icon.widthAnchor.constraint(equalToConstant: 64),
+            icon.heightAnchor.constraint(equalToConstant: 64)
+        ])
         let name = NSTextField(labelWithString: "FanBar")
         name.font = .systemFont(ofSize: 18, weight: .semibold)
         let about = NSTextField(labelWithString: "Menu bar fan control for MacBook.")

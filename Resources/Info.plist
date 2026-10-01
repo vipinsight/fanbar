@@ -6,6 +6,8 @@
 	<string>FanBar</string>
 	<key>CFBundleExecutable</key>
 	<string>FanBar</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.webtiara.fanbar</string>
 	<key>CFBundleInfoDictionaryVersion</key>
