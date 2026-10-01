@@ -12,10 +12,17 @@ VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" Resourc
 BUILD=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" Resources/Info.plist)
 MINIMUM_OS=$(/usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" Resources/Info.plist)
 DIST="dist/$VERSION"
-SIGN_UPDATE=.build/artifacts/sparkle/Sparkle/bin/sign_update
-# The private half of SUPublicEDKey. It is never in the repository, and it
-# cannot be replaced: installed copies trust only the key compiled into them.
-KEY_FILE="${FANBAR_SPARKLE_KEY:-$HOME/Library/CloudStorage/OneDrive-Personal/keys/macos-dev/fanbar-sparkle.key}"
+SPARKLE_BIN=.build/artifacts/sparkle/Sparkle/bin
+# The private half of SUPublicEDKey lives in the login keychain under this
+# account, or in a file named by FANBAR_SPARKLE_KEY. It is never in the
+# repository, and it cannot be replaced: installed copies trust only the key
+# compiled into them.
+KEY_ACCOUNT=fanbar
+if [ -n "${FANBAR_SPARKLE_KEY:-}" ]; then
+  SIGNING_KEY=(--ed-key-file "$FANBAR_SPARKLE_KEY")
+else
+  SIGNING_KEY=(--account "$KEY_ACCOUNT")
+fi
 
 # Credentials come from .env.notarization (gitignored); exported variables win.
 if [ -f .env.notarization ]; then
@@ -30,7 +37,12 @@ fi
 for name in APPLE_ID APPLE_TEAM_ID APPLE_PASSWORD APPLE_SIGNING_IDENTITY; do
   [ -n "${!name:-}" ] || { echo "Missing $name: export it or add it to .env.notarization" >&2; exit 1; }
 done
-[ -f "$KEY_FILE" ] || { echo "Missing Sparkle key at $KEY_FILE (or set FANBAR_SPARKLE_KEY)" >&2; exit 1; }
+if [ -n "${FANBAR_SPARKLE_KEY:-}" ]; then
+  [ -f "$FANBAR_SPARKLE_KEY" ] || { echo "Missing Sparkle key at $FANBAR_SPARKLE_KEY" >&2; exit 1; }
+else
+  "$SPARKLE_BIN/generate_keys" --account "$KEY_ACCOUNT" -p >/dev/null 2>&1 \
+    || { echo "No Sparkle key in the keychain under '$KEY_ACCOUNT': import the backup with generate_keys --account $KEY_ACCOUNT -f <file>, or set FANBAR_SPARKLE_KEY" >&2; exit 1; }
+fi
 
 notarize() {
   xcrun notarytool submit "$1" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" \
@@ -67,7 +79,7 @@ spctl --assess --type open --context context:primary-signature --verbose "$DMG"
 
 # 4. The feed installed copies read from releases/latest/download/appcast.xml.
 # sign_update prints: sparkle:edSignature="..." length="..."
-ENCLOSURE=$("$SIGN_UPDATE" --ed-key-file "$KEY_FILE" "$ZIP")
+ENCLOSURE=$("$SPARKLE_BIN/sign_update" "${SIGNING_KEY[@]}" "$ZIP")
 cat > "$DIST/appcast.xml" <<EOF
 <?xml version="1.0" encoding="utf-8"?>
 <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">

@@ -67,10 +67,3 @@ Only fan 0 is read and controlled, even on Macs with two fans.
 `UserDefaults` keys: `usesFahrenheit`, `temperatureSensor` (sensor name),
 `menuBarContent` (0 both, 1 temperature, 2 fan speed), `usesSingleLine`.
 Sparkle keeps its own `SU*` keys.
-
-## Git and GitHub
-
-- The repository is `vipinsight/fanbar` and has to stay public, or update
-  downloads 404.
-- This Mac has more than one GitHub account. Run `gh auth switch -u vipinsight`
-  before pushing, or the push fails with "Repository not found".

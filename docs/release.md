@@ -21,10 +21,11 @@ It stops unless both of these are present:
   `APPLE_ID`, `APPLE_TEAM_ID`, `APPLE_PASSWORD` (an app-specific password), and
   `APPLE_SIGNING_IDENTITY` (the Developer ID Application certificate). Exported
   variables win over the file.
-- **Sparkle signing key** at
-  `~/Library/CloudStorage/OneDrive-Personal/keys/macos-dev/fanbar-sparkle.key`
-  (or `FANBAR_SPARKLE_KEY`). It is also in the login keychain under the account
-  `fanbar`. Its public half is `SUPublicEDKey` in `Info.plist`.
+- **Sparkle signing key** in the login keychain under the account `fanbar`,
+  or a key file named by `FANBAR_SPARKLE_KEY`. A backup is kept outside the
+  repository; on a new Mac, import it with
+  `.build/artifacts/sparkle/Sparkle/bin/generate_keys --account fanbar -f <file>`.
+  Its public half is `SUPublicEDKey` in `Info.plist`.
 
 Then the script:
 
