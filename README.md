@@ -47,3 +47,7 @@ Local builds are ad-hoc signed and do not update themselves. Releases are covere
 FanBar reads and writes Apple SMC keys through IOKit. Reading needs no privileges. Changing fan speed installs a small root launch helper on first use; macOS asks for administrator approval once, and later changes go over a local Unix socket without prompting. The helper accepts only `auto` and RPM targets between 1000 and 8000.
 
 Hardware support varies by Mac model and macOS version. Failed SMC reads show `--`.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
