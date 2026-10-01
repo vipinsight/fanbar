@@ -8,7 +8,17 @@ typedef struct {
     uint32_t fanCount;
 } FanBarMetrics;
 
+typedef struct {
+    uint32_t rpm;
+    uint32_t minimumRPM;
+    uint32_t maximumRPM;
+} FanBarFan;
+
 int fanbar_read_metrics(FanBarMetrics *metrics);
+int fanbar_read_fan(uint32_t index, FanBarFan *fan);
 int fanbar_read_temperature(const char *key, double *celsius);
+int fanbar_key_count(uint32_t *count);
+int fanbar_key_at(uint32_t index, char name[5]);
 int fanbar_set_automatic(void);
 int fanbar_set_target_rpm(uint32_t rpm);
+int fanbar_set_maximum(void);

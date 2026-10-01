@@ -21,63 +21,8 @@ private enum MenuBarContent: Int {
     case both, temperature, fanSpeed
 }
 
-private struct TemperatureSensor {
-    let name: String
-    let keys: [String]
-
-    // Averages every key that currently reads a plausible temperature.
-    func read() -> Double? {
-        let values = keys.compactMap(readTemperature)
-        return values.isEmpty ? nil : values.reduce(0, +) / Double(values.count)
-    }
-
-    static func available() -> [TemperatureSensor] {
-        var sensors: [TemperatureSensor] = []
-        // Core keys differ per chip generation; this table is M1 family only.
-        if sysctlString("machdep.cpu.brand_string").contains("Apple M1") {
-            let efficiency = Array(["Tp09", "Tp0T"].prefix(sysctlInt("hw.perflevel1.physicalcpu")))
-            let performance = Array(["Tp01", "Tp05", "Tp0D", "Tp0H", "Tp0L", "Tp0P", "Tp0X", "Tp0b"].prefix(sysctlInt("hw.perflevel0.physicalcpu")))
-            let gpu = ["Tg05", "Tg0D", "Tg0L", "Tg0T"].filter { readTemperature($0) != nil }
-            sensors.append(TemperatureSensor(name: "CPU Core Average", keys: efficiency + performance))
-            sensors += efficiency.enumerated().map { TemperatureSensor(name: "CPU Efficiency Core \($0.offset + 1)", keys: [$0.element]) }
-            sensors += performance.enumerated().map { TemperatureSensor(name: "CPU Performance Core \($0.offset + 1)", keys: [$0.element]) }
-            sensors += gpu.enumerated().map { TemperatureSensor(name: "GPU Cluster \($0.offset + 1)", keys: [$0.element]) }
-            if gpu.count > 1 { sensors.append(TemperatureSensor(name: "GPU Cluster Average", keys: gpu)) }
-        }
-        sensors += [
-            TemperatureSensor(name: "CPU Proximity", keys: ["TC0P"]),
-            TemperatureSensor(name: "CPU Die", keys: ["TC0D"]),
-            TemperatureSensor(name: "GPU Proximity", keys: ["TG0P"]),
-            TemperatureSensor(name: "Battery", keys: ["TB0T"]),
-            TemperatureSensor(name: "Airport Proximity", keys: ["TW0P"]),
-            TemperatureSensor(name: "SSD", keys: ["TH0x"]),
-            TemperatureSensor(name: "Palm Rest", keys: ["Ts0P"])
-        ]
-        return sensors.filter { $0.read() != nil }
-    }
-}
-
-private func readTemperature(_ key: String) -> Double? {
-    var value = 0.0
-    guard fanbar_read_temperature(key, &value) == 0, value > 0, value < 130 else { return nil }
-    return value
-}
-
-private func sysctlInt(_ name: String) -> Int {
-    var value: Int32 = 0
-    var size = MemoryLayout<Int32>.size
-    return sysctlbyname(name, &value, &size, nil, 0) == 0 ? Int(value) : 0
-}
-
-private func sysctlString(_ name: String) -> String {
-    var size = 0
-    guard sysctlbyname(name, nil, &size, nil, 0) == 0 else { return "" }
-    var buffer = [CChar](repeating: 0, count: size)
-    return sysctlbyname(name, &buffer, &size, nil, 0) == 0 ? String(cString: buffer) : ""
-}
-
-final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
-    private let helperSocket = "/var/run/com.webtiara.fanbar.helper.sock"
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDelegate {
+    private let helper = FanHelper()
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let readoutField = NSTextField(labelWithString: "--°C\n-- rpm")
     private lazy var readoutHeight = readoutField.heightAnchor.constraint(equalToConstant: 22)
@@ -98,15 +43,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var slider: NSSlider?
     private var sliderValue: NSTextField?
     private var sliderMinimum: NSTextField?
-    private var currentSpeed: NSTextField?
+    private var sliderMaximum: NSTextField?
+    private var fanReadouts: [(current: NSTextField, maximum: NSTextField)] = []
     private var settingsStatus: NSTextField?
     private var autoUpdateCheck: NSButton?
     private let updates = Updates()
+    private let launchCallout = LaunchCallout()
     private let updateItem = NSMenuItem(title: "", action: #selector(installUpdate), keyEquivalent: "")
     private let updateSeparator = NSMenuItem.separator()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        let atLogin = launchedAtLogin
         NSApp.setActivationPolicy(.accessory)
+        configureMainMenu()
         configureStatusItem()
         configureMenu()
         refresh()
@@ -114,6 +63,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updates.canRestartNow = { [weak self] in self?.preset == .automatic }
         updates.onAvailableChange = { [weak self] _ in self?.showUpdateAvailable() }
         updates.start()
+        // Say where FanBar went, except at login when nobody asked for it.
+        if !atLogin {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+                self?.launchCallout.show(below: self?.statusItem.button)
+            }
+        }
+    }
+
+    /// Opening FanBar again from Finder or Spotlight while it runs opens Settings.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        showSettingsWindow()
+        return true
+    }
+
+    private var launchedAtLogin: Bool {
+        guard let event = NSAppleEventManager.shared().currentAppleEvent else { return false }
+        return event.eventID == kAEOpenApplication
+            && event.paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue == keyAELaunchedAsLogInItem
+    }
+
+    /// The menu bar menus shown while Settings is open and FanBar is in the Dock.
+    private func configureMainMenu() {
+        let appMenu = NSMenu()
+        appMenu.addItem(withTitle: "About FanBar", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(.separator())
+        let settings = appMenu.addItem(withTitle: "Settings…", action: #selector(showSettingsWindow), keyEquivalent: ",")
+        settings.target = self
+        appMenu.addItem(.separator())
+        appMenu.addItem(withTitle: "Hide FanBar", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        appMenu.addItem(.separator())
+        appMenu.addItem(withTitle: "Quit FanBar", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        let windowMenu = NSMenu(title: "Window")
+        windowMenu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+
+        let main = NSMenu()
+        for submenu in [appMenu, windowMenu] {
+            let item = NSMenuItem()
+            item.submenu = submenu
+            main.addItem(item)
+        }
+        NSApp.mainMenu = main
+        NSApp.windowsMenu = windowMenu
     }
 
     /// The install item at the top of the menu while an update is waiting.
@@ -143,7 +134,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         timer?.invalidate()
-        if preset != .automatic { _ = runPrivileged(arguments: ["--automatic"]) }
+        if preset != .automatic { helper.restoreAutomaticIfRunning() }
     }
 
     private func configureStatusItem() {
@@ -208,106 +199,60 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func selectPreset(_ sender: NSMenuItem) {
         guard let selected = presetItems.first(where: { $0.1 === sender })?.0 else { return }
         preset = selected
-        let result = apply(selected)
-        if result != 0 { showControlError(result) }
+        apply(selected)
         updateChecks()
         refreshSettingsControls()
         refresh()
     }
 
-    @discardableResult
-    private func apply(_ selected: FanPreset) -> Int32 {
+    /// Sends the preset to every fan. The UI shows it straight away; if the
+    /// helper can't apply it, the fans are left to macOS and the UI says so.
+    private func apply(_ selected: FanPreset) {
+        let completion: (FanHelper.Outcome) -> Void = { [weak self] outcome in
+            guard let self, outcome != .done else { return }
+            preset = .automatic
+            updateChecks()
+            refreshSettingsControls()
+            report(outcome)
+        }
         switch selected {
-        case .automatic: return runPrivileged(arguments: ["--automatic"])
-        case .target(let rpm): return runPrivileged(arguments: ["--set-rpm", "\(rpm)"])
-        case .fullBlast: return runPrivileged(arguments: ["--set-rpm", "\(fanMaximumRPM)"])
+        case .automatic: helper.setAutomatic(completion: completion)
+        case .target(let rpm): helper.setTarget(rpm: rpm, completion: completion)
+        case .fullBlast: helper.setMaximum(completion: completion)
         }
     }
 
-    private func runPrivileged(arguments: [String]) -> Int32 {
-        if !FileManager.default.fileExists(atPath: helperSocket) || helperIsOutdated {
-            let installResult = installHelper()
-            if installResult != 0 { return installResult }
-        }
-        let command = arguments.first == "--automatic" ? "auto" : "rpm \(arguments.last ?? "0")"
-        for _ in 0..<20 {
-            if let result = sendToHelper(command) { return result }
-            usleep(100_000)
-        }
-        return -1
-    }
+    private var showingFanAlert = false
 
-    private let installedHelper = "/Library/PrivilegedHelperTools/com.webtiara.fanbar.helper"
-    private var bundledHelper: String {
-        Bundle.main.bundleURL.appendingPathComponent("Contents/Library/PrivilegedHelperTools/com.webtiara.fanbar.helper").path
-    }
-
-    /// An app update ships a new helper, but the installed copy stays until replaced.
-    private var helperIsOutdated: Bool {
-        FileManager.default.fileExists(atPath: bundledHelper)
-            && !FileManager.default.contentsEqual(atPath: installedHelper, andPath: bundledHelper)
-    }
-
-    private func installHelper() -> Int32 {
-        let bundleRoot = Bundle.main.bundleURL
-        let helper = bundledHelper
-        let plist = bundleRoot.appendingPathComponent("Contents/Library/LaunchDaemons/com.webtiara.fanbar.helper.plist").path
-        guard FileManager.default.fileExists(atPath: helper), FileManager.default.fileExists(atPath: plist) else { return -1 }
-        let command = "mkdir -p /Library/PrivilegedHelperTools /Library/LaunchDaemons && cp \(shellQuote(helper)) /Library/PrivilegedHelperTools/com.webtiara.fanbar.helper && cp \(shellQuote(plist)) /Library/LaunchDaemons/com.webtiara.fanbar.helper.plist && chown root:wheel /Library/PrivilegedHelperTools/com.webtiara.fanbar.helper /Library/LaunchDaemons/com.webtiara.fanbar.helper.plist && chmod 755 /Library/PrivilegedHelperTools/com.webtiara.fanbar.helper && if launchctl print system/com.webtiara.fanbar.helper >/dev/null 2>&1; then launchctl kickstart -k system/com.webtiara.fanbar.helper; else launchctl bootstrap system /Library/LaunchDaemons/com.webtiara.fanbar.helper.plist; fi"
-        return runAsAdmin(command)
-    }
-
-    private func runAsAdmin(_ command: String) -> Int32 {
-        let escaped = command.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        process.arguments = ["-e", "do shell script \"\(escaped)\" with administrator privileges"]
-        do {
-            try process.run()
-            process.waitUntilExit()
-            return process.terminationStatus
-        } catch { return -1 }
-    }
-
-    private func shellQuote(_ value: String) -> String {
-        "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
-    }
-
-    private func sendToHelper(_ command: String) -> Int32? {
-        let descriptor = socket(AF_UNIX, SOCK_STREAM, 0)
-        guard descriptor >= 0 else { return nil }
-        defer { close(descriptor) }
-        var address = sockaddr_un()
-        address.sun_family = sa_family_t(AF_UNIX)
-        withUnsafeMutableBytes(of: &address.sun_path) { bytes in
-            _ = helperSocket.utf8CString.withUnsafeBytes { source in bytes.copyBytes(from: source) }
-        }
-        let connected = withUnsafePointer(to: &address) { pointer in
-            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(descriptor, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
-        }
-        guard connected == 0 else { return nil }
-        let payload = Array((command + "\n").utf8)
-        _ = payload.withUnsafeBytes { write(descriptor, $0.baseAddress, $0.count) }
-        var response = [UInt8](repeating: 0, count: 32)
-        let count = read(descriptor, &response, response.count - 1)
-        guard count > 0 else { return -1 }
-        return Int32(String(decoding: response[..<count], as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines))
-    }
-
-    private func showControlError(_ result: Int32) {
-        let message = result == -2
-            ? "FanBar needs administrator permission to change fan speed."
-            : "Apple SMC rejected this fan command (error \(result))."
+    private func report(_ outcome: FanHelper.Outcome) {
+        guard !showingFanAlert else { return }
+        showingFanAlert = true
+        defer { showingFanAlert = false }
         let alert = NSAlert()
-        alert.messageText = "Fan speed not changed"
-        alert.informativeText = message
-        alert.alertStyle = .warning
-        alert.runModal()
+        switch outcome {
+        case .done:
+            return
+        case .needsApproval:
+            alert.messageText = "Allow FanBar to control the fans"
+            alert.informativeText = "FanBar changes fan speed through a background helper. Turn on FanBar in System Settings › General › Login Items & Extensions, then try again."
+            alert.addButton(withTitle: "Open System Settings")
+            alert.addButton(withTitle: "Cancel")
+            NSApp.activate(ignoringOtherApps: true)
+            if alert.runModal() == .alertFirstButtonReturn { helper.openApprovalSettings() }
+        case .failed(let message):
+            alert.messageText = "Fan speed not changed"
+            alert.informativeText = message
+            alert.alertStyle = .warning
+            alert.runModal()
+        }
     }
 
     @objc private func showSettingsWindow() {
         if settingsWindow == nil { settingsWindow = makeSettingsWindow() }
         refreshSettingsControls()
+        launchCallout.dismiss()
+        // In the Dock and app switcher while Settings is open, like a normal app window.
+        NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         settingsWindow?.makeKeyAndOrderFront(nil)
     }
@@ -323,8 +268,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         window.styleMask = [.titled, .closable]
         window.toolbarStyle = .preference
         window.isReleasedWhenClosed = false
+        window.delegate = self
         window.center()
         return window
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        guard (notification.object as? NSWindow) === settingsWindow else { return }
+        NSApp.setActivationPolicy(.accessory)
     }
 
     private func settingsTab(_ title: String, symbol: String, content: NSView) -> NSTabViewItem {
@@ -413,9 +364,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func makeFanPane() -> NSView {
-        let current = NSTextField(labelWithString: "-- rpm")
-        current.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
-        currentSpeed = current
+        let fans = makeFanTable()
 
         let automatic = NSButton(radioButtonWithTitle: "Automatic", target: self, action: #selector(fanModeChanged(_:)))
         let manual = NSButton(radioButtonWithTitle: "Manual", target: self, action: #selector(fanModeChanged(_:)))
@@ -433,7 +382,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         slider = rpmSlider
         let minimum = NSTextField(labelWithString: "1000 rpm")
         sliderMinimum = minimum
-        let maximum = NSTextField(labelWithString: "Max")
+        let maximum = NSTextField(labelWithString: "6000 rpm")
+        sliderMaximum = maximum
         for label in [minimum, maximum] {
             label.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
             label.textColor = .secondaryLabelColor
@@ -451,7 +401,58 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         hint.textColor = .secondaryLabelColor
         hint.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
 
-        return formGrid([("Current speed:", current), ("Mode:", mode), ("Target speed:", value), ("", control), ("", hint)])
+        return formGrid([("Fans:", fans), ("Mode:", mode), ("Target speed:", value), ("", control), ("", hint)])
+    }
+
+    /// One row per fan: name, current speed, and the most it can do.
+    private func makeFanTable() -> NSView {
+        let count = Int(metrics.fanCount)
+        fanReadouts = []
+        if count == 0 {
+            let none = NSTextField(labelWithString: "This Mac has no fans")
+            none.textColor = .secondaryLabelColor
+            return none
+        }
+        let rows: [[NSView]] = (0..<count).map { index in
+            let name = NSTextField(labelWithString: fanName(index, of: count))
+            let current = NSTextField(labelWithString: "-- rpm")
+            current.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .medium)
+            current.alignment = .right
+            let maximum = NSTextField(labelWithString: "max --")
+            maximum.font = .monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
+            maximum.textColor = .secondaryLabelColor
+            fanReadouts.append((current, maximum))
+            return [name, current, maximum]
+        }
+        let table = NSGridView(views: rows)
+        table.rowSpacing = 4
+        table.columnSpacing = 12
+        table.column(at: 1).xPlacement = .trailing
+        table.rowAlignment = .lastBaseline
+        refreshFanReadouts()
+        return table
+    }
+
+    /// SMC has no fan names on Apple silicon. Two-fan MacBook Pros put fan 0 on
+    /// the left, which is how other fan utilities label them too; desktops
+    /// (Mac mini, Mac Studio, iMac, Mac Pro) just get numbers.
+    private func fanName(_ index: Int, of count: Int) -> String {
+        if count == 1 { return "Fan" }
+        if count == 2 && sysctlString("hw.model").hasPrefix("MacBookPro") { return index == 0 ? "Left" : "Right" }
+        return "Fan \(index + 1)"
+    }
+
+    private func refreshFanReadouts() {
+        for (index, readout) in fanReadouts.enumerated() {
+            var fan = FanBarFan(rpm: 0, minimumRPM: 0, maximumRPM: 0)
+            if fanbar_read_fan(UInt32(index), &fan) == 0 {
+                readout.current.stringValue = "\(fan.rpm) rpm"
+                readout.maximum.stringValue = "max \(fan.maximumRPM)"
+            } else {
+                readout.current.stringValue = "-- rpm"
+                readout.maximum.stringValue = "max --"
+            }
+        }
     }
 
     private func makeAboutPane() -> NSView {
@@ -496,6 +497,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         slider?.minValue = Double(fanMinimumRPM)
         slider?.maxValue = Double(fanMaximumRPM)
         sliderMinimum?.stringValue = "\(fanMinimumRPM) rpm"
+        sliderMaximum?.stringValue = "\(fanMaximumRPM) rpm"
         switch preset {
         case .fullBlast: slider?.doubleValue = Double(fanMaximumRPM)
         case .target(let rpm): slider?.doubleValue = Double(rpm)
@@ -513,16 +515,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         max(1000, min(Int(metrics.minimumRPM), fanMaximumRPM - 1000))
     }
 
-    // Snaps to 100 rpm steps; the ends of the track are the fan's minimum and Max.
+    // Snaps to 100 rpm steps. The track spans the lowest fan minimum to the
+    // highest fan maximum; each fan clamps the target to its own range, so the
+    // right end runs every fan at its own top speed.
     private func sliderPreset(_ slider: NSSlider) -> FanPreset {
-        if slider.doubleValue >= slider.maxValue - 50 { return .fullBlast }
+        if slider.doubleValue >= slider.maxValue - 50 { return .target(fanMaximumRPM) }
         if slider.doubleValue <= slider.minValue + 50 { return .target(fanMinimumRPM) }
-        return .target(min(Int((slider.doubleValue / 100).rounded()) * 100, fanMaximumRPM - 100))
+        return .target(min(max(Int((slider.doubleValue / 100).rounded()) * 100, fanMinimumRPM), fanMaximumRPM))
     }
 
     private func showTarget(_ target: FanPreset) {
         switch target {
-        case .fullBlast: sliderValue?.stringValue = "Max (\(fanMaximumRPM) rpm)"
+        case .fullBlast: sliderValue?.stringValue = "\(fanMaximumRPM) rpm"
         case .target(let rpm): sliderValue?.stringValue = "\(rpm) rpm"
         case .automatic: break
         }
@@ -532,8 +536,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let selected: FanPreset = sender === automaticMode ? .automatic : slider.map(sliderPreset) ?? .target(4000)
         guard selected != preset else { return }
         preset = selected
-        let result = apply(selected)
-        if result != 0 { showControlError(result) }
+        apply(selected)
         updateChecks()
     }
 
@@ -541,13 +544,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let selected = sliderPreset(sender)
         showTarget(selected)
         guard selected != preset else { return }
-        // Force Touch trackpads tick when the thumb snaps to Max or to the minimum.
-        if selected == .fullBlast || selected == .target(fanMinimumRPM) {
+        // Force Touch trackpads tick when the thumb reaches either end.
+        if selected == .target(fanMaximumRPM) || selected == .target(fanMinimumRPM) {
             NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now)
         }
         preset = selected
-        let result = apply(selected)
-        if result != 0 { showControlError(result) }
+        apply(selected)
         updateChecks()
     }
 
@@ -599,11 +601,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         var rpmText = "-- rpm"
         let metricsRead = fanbar_read_metrics(&metrics) == 0
         if metricsRead { rpmText = "\(metrics.rpm) rpm" }
-        if let celsius = selectedSensor?.read() ?? (metricsRead ? metrics.temperatureC : nil) {
+        // A chosen sensor that reads nothing (an idle GPU) shows --, not another sensor's value.
+        let celsius = selectedSensor.map { $0.read() } ?? (metricsRead && metrics.temperatureC > 0 ? metrics.temperatureC : nil)
+        if let celsius {
             let temperature = usesFahrenheit ? (celsius * 9 / 5 + 32) : celsius
             temperatureText = String(format: "%.0f°%@", temperature, unit)
         }
-        currentSpeed?.stringValue = rpmText
+        refreshFanReadouts()
         switch menuBarContent {
         case .both: setTitle(temperatureText + (usesSingleLine ? readoutSeparator : "\n") + rpmText)
         case .temperature: setTitle(temperatureText)
@@ -664,7 +668,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         for (itemPreset, item) in presetItems { item.state = itemPreset == preset ? .on : .off }
         automaticMode?.state = preset == .automatic ? .on : .off
         manualMode?.state = preset == .automatic ? .off : .on
-        slider?.isEnabled = preset != .automatic
+        let hasFans = metrics.fanCount > 0
+        manualMode?.isEnabled = hasFans
+        slider?.isEnabled = hasFans && preset != .automatic
         sliderValue?.textColor = preset == .automatic ? .disabledControlTextColor : .labelColor
     }
 }

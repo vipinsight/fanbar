@@ -14,41 +14,65 @@ Things that are not obvious from the code. Releasing is in [release.md](release.
 
 ## The fan helper
 
-- Changing fan speed needs root. The first fan command installs
-  `/Library/PrivilegedHelperTools/com.webtiara.fanbar.helper` as a launch
-  daemon, behind one administrator prompt; later commands go over
-  `/var/run/com.webtiara.fanbar.helper.sock`.
-- The app reinstalls the helper whenever the installed copy differs from the
-  one in its bundle, so an update can ship a new helper. Every local rebuild
-  produces a different binary, so expect the admin prompt again after each
-  rebuild, on the first fan change.
-- The helper accepts only `auto` and `rpm <1000–8000>`.
-- Quitting FanBar puts the fan back to Automatic.
+- Changing fan speed needs root. `Contents/MacOS/FanBarHelper` is a launch
+  daemon registered with `SMAppService` (`Resources/com.webtiara.fanbar.daemon.plist`).
+  The first fan command registers it, and macOS asks the user once to allow
+  FanBar under System Settings › General › Login Items & Extensions. No
+  password. Commands go over `/var/run/com.webtiara.fanbar.daemon.sock`.
+- This needs a Developer ID-signed build. Ad-hoc `./build-app.sh` builds can't
+  register the daemon; for local testing, build with
+  `SIGN_IDENTITY="Developer ID Application: …" ./build-app.sh`.
+- After an update the daemon keeps running the old binary. On its first fan
+  command the app compares the daemon's `version` with its own
+  `CFBundleVersion` and sends `exit`; launchd restarts it from the new bundle.
+- The daemon accepts `auto`, `max`, `rpm <1000–8000>`, `version`, and `exit`,
+  and applies fan commands to every fan, each clamped to its own range.
+- On first start it removes the helper FanBar 1.0.0 installed with an admin
+  password (`com.webtiara.fanbar.helper`).
+- Fan commands run off the main thread: on M1 to M4, taking the fans from
+  thermalmonitord can mean setting `Ftst` and waiting a few seconds.
+- The fans go back to Automatic whenever FanBar stops, for any reason. The app
+  resets them on quit, and the daemon watches the process that last set a
+  manual speed: if it exits (crash, force quit, logout), the daemon resets them
+  itself. It also resets them when it starts and when launchd stops it.
 
 ## SMC keys
 
 | Key | Meaning |
 |---|---|
-| `F0Ac` | Fan 0 measured speed; this is what the menu bar shows |
-| `F0Tg` | Fan 0 target speed; presets and the slider write it |
-| `F0Md` | Fan 0 mode: 0 automatic, 1 manual |
-| `F0Mn` / `F0Mx` | Fan 0 hardware minimum and maximum; the slider range |
+| `F<n>Ac` | Fan n measured speed; the menu bar shows the fastest fan |
+| `F<n>Tg` | Fan n target speed; presets and the slider write it |
+| `F<n>Md` | Fan n mode: 0 automatic, 1 manual (`F<n>md` on some models) |
+| `F<n>Mn` / `F<n>Mx` | Fan n hardware minimum and maximum |
 | `FNum` | Number of fans |
+| `Ftst` | On M1 to M4, set to 1 before thermalmonitord lets go of the fans |
 
-Only fan 0 is read and controlled, even on Macs with two fans.
+Any number of fans works (up to 8). The slider spans the lowest fan minimum
+to the highest fan maximum, and each fan clamps a target to its own range, so
+the right end runs every fan at its own top speed. On a 14" M1 Pro the two fans
+top out at 5779 and 6241 rpm. Fanless Macs (`FNum` = 0) show "This Mac has no
+fans".
+
+SMC has no fan names on Apple silicon. Two-fan MacBook Pros are labelled Left
+and Right (fan 0 is on the left, as other fan utilities label it); other Macs
+get Fan 1, Fan 2, and so on.
 
 ## Temperature sensors
 
-- Per-core and GPU sensors are mapped only for M1-family chips
-  (`TemperatureSensor.available()`). Key meanings change between chip
-  generations, so M2 and later get only the general sensors until someone maps
-  them on real hardware. To see what a Mac reports, enumerate the SMC keys
-  starting with `T`.
-- Names follow the mapping other fan utilities use; Apple does not document it.
-  Binned chips report keys for cores they don't have (an 8-core M1 Pro reports
-  8 performance-core keys for 6 cores), so the app lists as many as
-  `hw.perflevel0/1.physicalcpu` says exist.
-- A sensor is listed only if it reads 0–130 °C at launch.
+- Core and GPU keys move between chip generations. `ChipLayout` in
+  `Sensors.swift` has a table for each of M1 to M5, taken from the Stats app
+  (github.com/exelban/stats, MIT). Only M1 Pro has been checked on real
+  hardware here.
+- A chip without a table, or whose keys don't match, still gets a
+  "CPU Core Average" from every `Tp*`/`Te*` key it reports. On Apple silicon
+  that sensor always comes first, so it is the default.
+- Apple does not document any of this. Binned chips report keys for cores they
+  don't have (an 8-core M1 Pro reports 8 performance-core keys for 6 cores), so
+  the app lists as many as `hw.perflevel0/1.physicalcpu` says exist.
+- A sensor is listed if its key exists and isn't 0. A reading under 15 °C or
+  over 130 °C shows as `--`: an idle, powered-down GPU keeps reporting about
+  9 °C.
+- To see what a Mac reports, enumerate the SMC keys starting with `T`.
 
 ## Menu bar
 

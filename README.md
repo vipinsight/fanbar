@@ -31,8 +31,7 @@ Download the latest `FanBar-<version>.dmg` from [Releases](https://github.com/vi
 ## Requirements
 
 - macOS 13 or later, Apple silicon or Intel
-- Per-core sensors are mapped for M1-family chips; other Macs get the general sensors (battery, SSD, CPU proximity on Intel)
-- Only the first fan is read and controlled
+- Per-core and GPU sensors on M1 to M5; other Apple silicon gets a CPU average, Intel gets CPU proximity
 
 ## Build
 
@@ -46,7 +45,7 @@ Local builds are ad-hoc signed and do not update themselves. See [docs/developme
 
 ## How fan control works
 
-FanBar reads and writes Apple SMC keys through IOKit. Reading needs no privileges. Changing fan speed installs a small root launch helper on first use; macOS asks for administrator approval once, and later changes go over a local Unix socket without prompting. The helper accepts only `auto` and RPM targets between 1000 and 8000.
+FanBar reads and writes Apple SMC keys through IOKit. Reading needs no privileges. Changing fan speed goes through a small root helper inside the app. The first time, macOS asks you to allow FanBar in System Settings › General › Login Items & Extensions; there is no password prompt. Every command applies to all fans, and Max sends each fan to its own maximum.
 
 Hardware support varies by Mac model and macOS version. Failed SMC reads show `--`.
 

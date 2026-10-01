@@ -34,8 +34,11 @@ Then the script:
    then the app.
 2. Notarizes and staples the app.
 3. Zips it as the update payload, `FanBar-<version>.zip`.
-4. Wraps it in `FanBar-<version>.dmg`, then signs, notarizes, and staples the
-   image. Gatekeeper rejects an unnotarized image.
+4. Wraps it in `FanBar-<version>.dmg` with `scripts/make-dmg.sh`: the app,
+   an Applications link, and a "drag and drop" arrow background. Finder lays
+   out the window, so the first run asks to let Terminal control Finder. Then
+   it signs, notarizes, and staples the image. Gatekeeper rejects an
+   unnotarized image.
 5. Signs the zip with the Sparkle key and writes `appcast.xml` pointing at this
    version's download URL.
 
@@ -61,6 +64,9 @@ Without `appcast.xml`, nobody finds the update. Without the zip, they find it
 and then fail to download it. The repository has to stay public, or the
 downloads 404.
 
+The DMG background is `Resources/dmg/background.tiff`. Regenerate it with
+`swift scripts/generate-dmg-background.swift` only if the art changes.
+
 ## The signing key
 
 **That key cannot be replaced.** Every installed copy trusts exactly the public
@@ -76,8 +82,8 @@ the fan is under manual control; then the menu offers "Update to <version> and
 Restart" instead of dropping the user's fan setting. With it off, the menu
 shows "Update to <version>…".
 
-A new release can ship a new fan helper. The app compares the installed helper
-with the one in its bundle and reinstalls it on the next fan command, which
-asks for administrator approval once.
+The fan helper lives inside the app, so an update replaces it. The app
+restarts the running helper on its first fan command after an update, with no
+prompt.
 
 Local `./build-app.sh` builds are ad-hoc signed, so their updater stays off.
