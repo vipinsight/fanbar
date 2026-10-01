@@ -19,11 +19,16 @@ The menu bar shows the selected sensor's temperature and the fan's measured RPM,
 - **Sensor picker**: CPU core average, individual efficiency/performance cores, GPU clusters, battery, SSD, and more (only sensors your Mac reports are listed)
 - **Fan control**: Automatic, Full blast, fixed presets (1000–6000 rpm), or a custom target from the slider, which spans your fan's hardware range and ends at Max
 - **Settings**: launch at login, °C / °F, menu bar layout
+- **Automatic updates**: checks GitHub releases every 12 hours and installs signed, notarized updates
 - **Safe defaults**: restores Automatic mode on quit
+
+## Install
+
+Download the latest `FanBar-<version>.dmg` from [Releases](https://github.com/vipinsight/fanbar/releases/latest), open it, and drag FanBar to Applications. It updates itself after that.
 
 ## Requirements
 
-- macOS 13 or later
+- macOS 13 or later, Apple silicon or Intel
 - Per-core sensors are mapped for M1-family chips; other Macs get the general sensors (battery, SSD, CPU proximity on Intel)
 - Only the first fan is read and controlled
 
@@ -34,6 +39,8 @@ cd fanbar
 ./build-app.sh
 open FanBar.app
 ```
+
+Local builds are ad-hoc signed and do not update themselves. Releases are covered in [docs/release.md](docs/release.md).
 
 ## How fan control works
 

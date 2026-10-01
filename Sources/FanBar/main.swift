@@ -100,6 +100,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var sliderMinimum: NSTextField?
     private var currentSpeed: NSTextField?
     private var settingsStatus: NSTextField?
+    private var autoUpdateCheck: NSButton?
+    private let updates = Updates()
+    private let updateItem = NSMenuItem(title: "", action: #selector(installUpdate), keyEquivalent: "")
+    private let updateSeparator = NSMenuItem.separator()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -107,6 +111,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         configureMenu()
         refresh()
         timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in self?.refresh() }
+        updates.canRestartNow = { [weak self] in self?.preset == .automatic }
+        updates.onAvailableChange = { [weak self] _ in self?.showUpdateAvailable() }
+        updates.start()
+    }
+
+    /// The install item at the top of the menu while an update is waiting.
+    private func showUpdateAvailable() {
+        let shown = menu.items.contains(updateItem)
+        guard let version = updates.availableVersion else {
+            if shown {
+                menu.removeItem(updateItem)
+                menu.removeItem(updateSeparator)
+            }
+            return
+        }
+        updateItem.title = updates.isReadyToInstall ? "Update to \(version) and Restart" : "Update to \(version)…"
+        if !shown {
+            menu.insertItem(updateItem, at: 0)
+            menu.insertItem(updateSeparator, at: 1)
+        }
+    }
+
+    @objc private func installUpdate() {
+        updates.installAvailableUpdate()
+    }
+
+    @objc private func checkForUpdates() {
+        updates.checkForUpdates()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -170,6 +202,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let quit = NSMenuItem(title: "Quit FanBar", action: #selector(quit), keyEquivalent: "")
         quit.target = self
         menu.addItem(quit)
+        updateItem.target = self
     }
 
     @objc private func selectPreset(_ sender: NSMenuItem) {
@@ -192,7 +225,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func runPrivileged(arguments: [String]) -> Int32 {
-        if !FileManager.default.fileExists(atPath: helperSocket) {
+        if !FileManager.default.fileExists(atPath: helperSocket) || helperIsOutdated {
             let installResult = installHelper()
             if installResult != 0 { return installResult }
         }
@@ -204,12 +237,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return -1
     }
 
+    private let installedHelper = "/Library/PrivilegedHelperTools/com.webtiara.fanbar.helper"
+    private var bundledHelper: String {
+        Bundle.main.bundleURL.appendingPathComponent("Contents/Library/PrivilegedHelperTools/com.webtiara.fanbar.helper").path
+    }
+
+    /// An app update ships a new helper, but the installed copy stays until replaced.
+    private var helperIsOutdated: Bool {
+        FileManager.default.fileExists(atPath: bundledHelper)
+            && !FileManager.default.contentsEqual(atPath: installedHelper, andPath: bundledHelper)
+    }
+
     private func installHelper() -> Int32 {
         let bundleRoot = Bundle.main.bundleURL
-        let helper = bundleRoot.appendingPathComponent("Contents/Library/PrivilegedHelperTools/com.webtiara.fanbar.helper").path
+        let helper = bundledHelper
         let plist = bundleRoot.appendingPathComponent("Contents/Library/LaunchDaemons/com.webtiara.fanbar.helper.plist").path
         guard FileManager.default.fileExists(atPath: helper), FileManager.default.fileExists(atPath: plist) else { return -1 }
-        let command = "mkdir -p /Library/PrivilegedHelperTools /Library/LaunchDaemons && cp \(shellQuote(helper)) /Library/PrivilegedHelperTools/com.webtiara.fanbar.helper && cp \(shellQuote(plist)) /Library/LaunchDaemons/com.webtiara.fanbar.helper.plist && chown root:wheel /Library/PrivilegedHelperTools/com.webtiara.fanbar.helper /Library/LaunchDaemons/com.webtiara.fanbar.helper.plist && chmod 755 /Library/PrivilegedHelperTools/com.webtiara.fanbar.helper && (launchctl print system/com.webtiara.fanbar.helper >/dev/null 2>&1 || launchctl bootstrap system /Library/LaunchDaemons/com.webtiara.fanbar.helper.plist)"
+        let command = "mkdir -p /Library/PrivilegedHelperTools /Library/LaunchDaemons && cp \(shellQuote(helper)) /Library/PrivilegedHelperTools/com.webtiara.fanbar.helper && cp \(shellQuote(plist)) /Library/LaunchDaemons/com.webtiara.fanbar.helper.plist && chown root:wheel /Library/PrivilegedHelperTools/com.webtiara.fanbar.helper /Library/LaunchDaemons/com.webtiara.fanbar.helper.plist && chmod 755 /Library/PrivilegedHelperTools/com.webtiara.fanbar.helper && if launchctl print system/com.webtiara.fanbar.helper >/dev/null 2>&1; then launchctl kickstart -k system/com.webtiara.fanbar.helper; else launchctl bootstrap system /Library/LaunchDaemons/com.webtiara.fanbar.helper.plist; fi"
         return runAsAdmin(command)
     }
 
@@ -300,7 +344,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         pane.addSubview(content)
         NSLayoutConstraint.activate([
             pane.widthAnchor.constraint(equalToConstant: 480),
-            pane.heightAnchor.constraint(equalToConstant: 260),
+            pane.heightAnchor.constraint(equalToConstant: 280),
             content.centerXAnchor.constraint(equalTo: pane.centerXAnchor),
             content.topAnchor.constraint(equalTo: pane.topAnchor, constant: 32)
         ])
@@ -322,6 +366,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func makeGeneralPane() -> NSView {
         let login = NSButton(checkboxWithTitle: "Launch FanBar at login", target: self, action: #selector(toggleLoginItem(_:)))
         loginItemCheck = login
+        let autoUpdate = NSButton(checkboxWithTitle: "Install updates automatically", target: self, action: #selector(toggleAutoUpdate(_:)))
+        autoUpdateCheck = autoUpdate
 
         let temperaturePopup = NSPopUpButton(frame: .zero, pullsDown: false)
         temperaturePopup.addItems(withTitles: ["Celsius (°C)", "Fahrenheit (°F)"])
@@ -357,6 +403,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         return formGrid([
             ("", login),
+            ("", autoUpdate),
             ("Temperature unit:", temperaturePopup),
             ("Sensor:", sensorChoice),
             ("Menu bar:", contentPopup),
@@ -422,17 +469,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         github.isBordered = false
         github.contentTintColor = .linkColor
 
-        let stack = NSStackView(views: [icon, name, about, version, github])
+        let check = NSButton(title: "Check for Updates…", target: self, action: #selector(checkForUpdates))
+        check.isEnabled = updates.isEnabled
+        if !updates.isEnabled { check.toolTip = "Updates are off in local builds." }
+
+        let stack = NSStackView(views: [icon, name, about, version, check, github])
         stack.orientation = .vertical
         stack.alignment = .centerX
         stack.spacing = 4
         stack.setCustomSpacing(8, after: icon)
-        stack.setCustomSpacing(8, after: version)
+        stack.setCustomSpacing(10, after: version)
+        stack.setCustomSpacing(6, after: check)
         return stack
     }
 
     private func refreshSettingsControls() {
         loginItemCheck?.state = SMAppService.mainApp.status == .enabled ? .on : .off
+        autoUpdateCheck?.state = updates.installsAutomatically ? .on : .off
         temperatureUnitPopup?.selectItem(at: usesFahrenheit ? 1 : 0)
         if let sensor = selectedSensor { sensorPopup?.selectItem(withTitle: sensor.name) }
         menuBarContentPopup?.selectItem(at: menuBarContent.rawValue)
@@ -494,6 +547,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let result = apply(selected)
         if result != 0 { showControlError(result) }
         updateChecks()
+    }
+
+    @objc private func toggleAutoUpdate(_ sender: NSButton) {
+        updates.installsAutomatically = sender.state == .on
     }
 
     @objc private func toggleLoginItem(_ sender: NSButton) {
