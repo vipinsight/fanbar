@@ -22,8 +22,8 @@ It stops unless both of these are present:
   `APPLE_SIGNING_IDENTITY` (the Developer ID Application certificate). Exported
   variables win over the file.
 - **Sparkle signing key** in the login keychain under the account `fanbar`,
-  or a key file named by `FANBAR_SPARKLE_KEY`. A backup is kept outside the
-  repository; on a new Mac, import it with
+  or a key file named by `FANBAR_SPARKLE_KEY`. The backup is
+  `keys/macos-dev/fanbar-sparkle.key` in OneDrive; on a new Mac, import it with
   `.build/artifacts/sparkle/Sparkle/bin/generate_keys --account fanbar -f <file>`.
   Its public half is `SUPublicEDKey` in `Info.plist`.
 
