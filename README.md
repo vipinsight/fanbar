@@ -4,6 +4,15 @@ Native macOS menu bar app for monitoring temperature and controlling fan speed.
 
 The menu bar shows the selected sensor's temperature and the fan's measured RPM, read live from the SMC every 2 seconds. Presets only set a target, so if macOS or another app spins the fan up, the readout shows it.
 
+<p>
+  <img src="docs/screenshots/menu-bar.png" width="350" alt="FanBar menu bar readout and menu">
+</p>
+
+<p>
+  <img src="docs/screenshots/settings-general.png" width="420" alt="General settings">
+  <img src="docs/screenshots/settings-speed.png" width="420" alt="Speed settings">
+</p>
+
 ## Features
 
 - **Menu bar readout**: temperature and fan speed, stacked on two lines or side by side, or either one alone
