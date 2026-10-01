@@ -40,7 +40,7 @@ cd fanbar
 open FanBar.app
 ```
 
-Local builds are ad-hoc signed and do not update themselves. Releases are covered in [docs/release.md](docs/release.md).
+Local builds are ad-hoc signed and do not update themselves. See [docs/development.md](docs/development.md) for things to know while working on FanBar, and [docs/release.md](docs/release.md) for releasing.
 
 ## How fan control works
 
