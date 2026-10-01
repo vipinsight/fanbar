@@ -1,16 +1,22 @@
 # FanBar
 
-Native macOS menu bar fan utility.
+Native macOS menu bar app for monitoring temperature and controlling fan speed.
 
-FanBar installs a small root launch helper after the first fan-control action. macOS asks for administrator approval once; later presets use a local Unix socket and do not prompt again. The helper accepts only bounded RPM and Automatic commands.
+The menu bar shows the selected sensor's temperature and the fan's measured RPM, read live from the SMC every 2 seconds. Presets only set a target, so if macOS or another app spins the fan up, the readout shows it.
 
-Status item shows core temperature and current fan RPM stacked. Menu presets:
+## Features
 
-- Automatic
-- 1000 rpm
-- 2000 rpm
-- 4000 rpm
-- 6000 rpm
+- **Menu bar readout**: temperature and fan speed, stacked on two lines or side by side, or either one alone
+- **Sensor picker**: CPU core average, individual efficiency/performance cores, GPU clusters, battery, SSD, and more (only sensors your Mac reports are listed)
+- **Fan control**: Automatic, Full blast, fixed presets (1000–6000 rpm), or a custom target from the slider, which spans your fan's hardware range and ends at Max
+- **Settings**: launch at login, °C / °F, menu bar layout
+- **Safe defaults**: restores Automatic mode on quit
+
+## Requirements
+
+- macOS 13 or later
+- Per-core sensors are mapped for M1-family chips; other Macs get the general sensors (battery, SSD, CPU proximity on Intel)
+- Only the first fan is read and controlled
 
 ## Build
 
@@ -20,4 +26,8 @@ cd fanbar
 open FanBar.app
 ```
 
-Fan control uses Apple SMC keys through IOKit. Hardware support varies by Mac model and macOS version. Failed SMC reads show `--`; app restores Automatic mode on quit.
+## How fan control works
+
+FanBar reads and writes Apple SMC keys through IOKit. Reading needs no privileges. Changing fan speed installs a small root launch helper on first use; macOS asks for administrator approval once, and later changes go over a local Unix socket without prompting. The helper accepts only `auto` and RPM targets between 1000 and 8000.
+
+Hardware support varies by Mac model and macOS version. Failed SMC reads show `--`.
