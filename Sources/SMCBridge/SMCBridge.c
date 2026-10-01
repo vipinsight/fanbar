@@ -132,6 +132,14 @@ int fanbar_read_metrics(FanBarMetrics *metrics) {
     return 0;
 }
 
+int fanbar_read_temperature(const char *key, double *celsius) {
+    if (!key || !celsius || strlen(key) != 4) return -1;
+    SMCValue value = {0};
+    int result = read_value(key, &value);
+    if (result != 0) return result;
+    return value_number(&value, celsius);
+}
+
 int fanbar_set_automatic(void) {
     uint8_t mode = 0;
     return write_value("F0Md", &mode, 1);

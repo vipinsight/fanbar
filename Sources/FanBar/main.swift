@@ -17,20 +17,88 @@ private enum FanPreset: Equatable {
     }
 }
 
+private enum MenuBarContent: Int {
+    case both, temperature, fanSpeed
+}
+
+private struct TemperatureSensor {
+    let name: String
+    let keys: [String]
+
+    // Averages every key that currently reads a plausible temperature.
+    func read() -> Double? {
+        let values = keys.compactMap(readTemperature)
+        return values.isEmpty ? nil : values.reduce(0, +) / Double(values.count)
+    }
+
+    static func available() -> [TemperatureSensor] {
+        var sensors: [TemperatureSensor] = []
+        // Core keys differ per chip generation; this table is M1 family only.
+        if sysctlString("machdep.cpu.brand_string").contains("Apple M1") {
+            let efficiency = Array(["Tp09", "Tp0T"].prefix(sysctlInt("hw.perflevel1.physicalcpu")))
+            let performance = Array(["Tp01", "Tp05", "Tp0D", "Tp0H", "Tp0L", "Tp0P", "Tp0X", "Tp0b"].prefix(sysctlInt("hw.perflevel0.physicalcpu")))
+            let gpu = ["Tg05", "Tg0D", "Tg0L", "Tg0T"].filter { readTemperature($0) != nil }
+            sensors.append(TemperatureSensor(name: "CPU Core Average", keys: efficiency + performance))
+            sensors += efficiency.enumerated().map { TemperatureSensor(name: "CPU Efficiency Core \($0.offset + 1)", keys: [$0.element]) }
+            sensors += performance.enumerated().map { TemperatureSensor(name: "CPU Performance Core \($0.offset + 1)", keys: [$0.element]) }
+            sensors += gpu.enumerated().map { TemperatureSensor(name: "GPU Cluster \($0.offset + 1)", keys: [$0.element]) }
+            if gpu.count > 1 { sensors.append(TemperatureSensor(name: "GPU Cluster Average", keys: gpu)) }
+        }
+        sensors += [
+            TemperatureSensor(name: "CPU Proximity", keys: ["TC0P"]),
+            TemperatureSensor(name: "CPU Die", keys: ["TC0D"]),
+            TemperatureSensor(name: "GPU Proximity", keys: ["TG0P"]),
+            TemperatureSensor(name: "Battery", keys: ["TB0T"]),
+            TemperatureSensor(name: "Airport Proximity", keys: ["TW0P"]),
+            TemperatureSensor(name: "SSD", keys: ["TH0x"]),
+            TemperatureSensor(name: "Palm Rest", keys: ["Ts0P"])
+        ]
+        return sensors.filter { $0.read() != nil }
+    }
+}
+
+private func readTemperature(_ key: String) -> Double? {
+    var value = 0.0
+    guard fanbar_read_temperature(key, &value) == 0, value > 0, value < 130 else { return nil }
+    return value
+}
+
+private func sysctlInt(_ name: String) -> Int {
+    var value: Int32 = 0
+    var size = MemoryLayout<Int32>.size
+    return sysctlbyname(name, &value, &size, nil, 0) == 0 ? Int(value) : 0
+}
+
+private func sysctlString(_ name: String) -> String {
+    var size = 0
+    guard sysctlbyname(name, nil, &size, nil, 0) == 0 else { return "" }
+    var buffer = [CChar](repeating: 0, count: size)
+    return sysctlbyname(name, &buffer, &size, nil, 0) == 0 ? String(cString: buffer) : ""
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let helperSocket = "/var/run/com.webtiara.fanbar.helper.sock"
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let readoutField = NSTextField(labelWithString: "--°C\n-- rpm")
+    private lazy var readoutHeight = readoutField.heightAnchor.constraint(equalToConstant: 22)
     private let menu = NSMenu()
     private var timer: Timer?
     private var preset: FanPreset = .automatic
     private var metrics = FanBarMetrics(temperatureC: 0, rpm: 0, minimumRPM: 0, maximumRPM: 0, fanCount: 0)
     private var presetItems: [(FanPreset, NSMenuItem)] = []
     private var settingsWindow: NSWindow?
-    private var loginItemCheck: NSSwitch?
+    private var loginItemCheck: NSButton?
     private var temperatureUnitPopup: NSPopUpButton?
+    private var sensorPopup: NSPopUpButton?
+    private lazy var sensors = TemperatureSensor.available()
+    private var menuBarContentPopup: NSPopUpButton?
+    private var twoLinesCheck: NSButton?
+    private var automaticMode: NSButton?
+    private var manualMode: NSButton?
     private var slider: NSSlider?
     private var sliderValue: NSTextField?
+    private var sliderMinimum: NSTextField?
+    private var currentSpeed: NSTextField?
     private var settingsStatus: NSTextField?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -47,7 +115,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func configureStatusItem() {
-        statusItem.length = 62
         statusItem.menu = menu
         if let button = statusItem.button {
             button.toolTip = "FanBar"
@@ -67,8 +134,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             NSLayoutConstraint.activate([
                 readoutField.centerXAnchor.constraint(equalTo: button.centerXAnchor),
                 readoutField.centerYAnchor.constraint(equalTo: button.centerYAnchor),
-                readoutField.widthAnchor.constraint(equalTo: button.widthAnchor),
-                readoutField.heightAnchor.constraint(equalToConstant: 22)
+                readoutHeight
             ])
         }
     }
@@ -76,9 +142,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func configureMenu() {
         menu.autoenablesItems = false
         menu.delegate = self
-        let open = NSMenuItem(title: "Open FanBar", action: #selector(openSettings), keyEquivalent: "")
+        // Not named openSettings: AppKit auto-adds a gear icon for that selector, misaligning the menu.
+        let open = NSMenuItem(title: "Open FanBar", action: #selector(showSettingsWindow), keyEquivalent: "")
         open.target = self
-        open.image = nil
         menu.addItem(open)
         menu.addItem(.separator())
         let presets: [FanPreset] = [.automatic, .fullBlast]
@@ -112,6 +178,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let result = apply(selected)
         if result != 0 { showControlError(result) }
         updateChecks()
+        refreshSettingsControls()
         refresh()
     }
 
@@ -120,9 +187,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         switch selected {
         case .automatic: return runPrivileged(arguments: ["--automatic"])
         case .target(let rpm): return runPrivileged(arguments: ["--set-rpm", "\(rpm)"])
-        case .fullBlast:
-            let maximum = max(metrics.maximumRPM, 6000)
-            return runPrivileged(arguments: ["--set-rpm", "\(maximum)"])
+        case .fullBlast: return runPrivileged(arguments: ["--set-rpm", "\(fanMaximumRPM)"])
         }
     }
 
@@ -196,7 +261,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         alert.runModal()
     }
 
-    @objc private func openSettings() {
+    @objc private func showSettingsWindow() {
         if settingsWindow == nil { settingsWindow = makeSettingsWindow() }
         refreshSettingsControls()
         NSApp.activate(ignoringOtherApps: true)
@@ -204,129 +269,238 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func makeSettingsWindow() -> NSWindow {
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 440, height: 335), styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        window.title = "FanBar"
-        window.center()
+        let tabs = NSTabViewController()
+        tabs.tabStyle = .toolbar
+        tabs.addTabViewItem(settingsTab("General", symbol: "gearshape", content: makeGeneralPane()))
+        tabs.addTabViewItem(settingsTab("Speed", symbol: "fan", content: makeFanPane()))
+        tabs.addTabViewItem(settingsTab("About", symbol: "info.circle", content: makeAboutPane()))
+
+        let window = NSWindow(contentViewController: tabs)
+        window.styleMask = [.titled, .closable]
+        window.toolbarStyle = .preference
         window.isReleasedWhenClosed = false
+        window.center()
+        return window
+    }
 
-        let aboutTitle = NSTextField(labelWithString: "FanBar")
-        aboutTitle.font = .systemFont(ofSize: 24, weight: .semibold)
-        let about = NSTextField(labelWithString: "Menu bar fan control for MacBook.\nMonitor temperature and control fan speed.")
-        about.textColor = .secondaryLabelColor
-        about.maximumNumberOfLines = 2
+    private func settingsTab(_ title: String, symbol: String, content: NSView) -> NSTabViewItem {
+        let controller = NSViewController()
+        controller.view = settingsPane(content)
+        controller.title = title
+        let item = NSTabViewItem(viewController: controller)
+        item.label = title
+        item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
+        return item
+    }
 
-        let generalTitle = NSTextField(labelWithString: "General")
-        generalTitle.font = .systemFont(ofSize: 13, weight: .semibold)
-        let loginLabel = NSTextField(labelWithString: "Launch FanBar at login")
-        let login = NSSwitch(frame: .zero)
-        login.target = self
-        login.action = #selector(toggleLoginItem(_:))
+    // Every pane shares one size so switching tabs never resizes the window.
+    private func settingsPane(_ content: NSView) -> NSView {
+        let pane = NSView()
+        content.translatesAutoresizingMaskIntoConstraints = false
+        pane.addSubview(content)
+        NSLayoutConstraint.activate([
+            pane.widthAnchor.constraint(equalToConstant: 480),
+            pane.heightAnchor.constraint(equalToConstant: 260),
+            content.centerXAnchor.constraint(equalTo: pane.centerXAnchor),
+            content.topAnchor.constraint(equalTo: pane.topAnchor, constant: 32)
+        ])
+        return pane
+    }
+
+    // Right-aligned labels beside their controls; an empty label leaves the cell blank.
+    private func formGrid(_ rows: [(String, NSView)]) -> NSGridView {
+        let grid = NSGridView(views: rows.map { label, control in
+            [label.isEmpty ? NSGridCell.emptyContentView : NSTextField(labelWithString: label), control]
+        })
+        grid.rowSpacing = 14
+        grid.columnSpacing = 8
+        grid.column(at: 0).xPlacement = .trailing
+        for index in 0..<grid.numberOfRows { grid.row(at: index).yPlacement = .center }
+        return grid
+    }
+
+    private func makeGeneralPane() -> NSView {
+        let login = NSButton(checkboxWithTitle: "Launch FanBar at login", target: self, action: #selector(toggleLoginItem(_:)))
         loginItemCheck = login
-        let loginRow = NSStackView(views: [loginLabel, NSView(), login])
-        loginRow.distribution = .fill
-        loginRow.alignment = .centerY
 
-        let temperatureLabel = NSTextField(labelWithString: "Temperature unit")
         let temperaturePopup = NSPopUpButton(frame: .zero, pullsDown: false)
         temperaturePopup.addItems(withTitles: ["Celsius (°C)", "Fahrenheit (°F)"])
         temperaturePopup.target = self
         temperaturePopup.action = #selector(temperatureUnitChanged(_:))
+        temperaturePopup.widthAnchor.constraint(equalToConstant: 220).isActive = true
         temperatureUnitPopup = temperaturePopup
-        temperaturePopup.widthAnchor.constraint(equalToConstant: 145).isActive = true
-        let temperatureRow = NSStackView(views: [temperatureLabel, NSView(), temperaturePopup])
-        temperatureRow.distribution = .fill
-        temperatureRow.alignment = .centerY
 
-        let presetTitle = NSTextField(labelWithString: "Custom fan speed")
-        presetTitle.font = .systemFont(ofSize: 13, weight: .semibold)
-        let value = NSTextField(labelWithString: "4000 rpm")
-        value.alignment = .right
-        value.font = .monospacedDigitSystemFont(ofSize: 12, weight: .medium)
-        sliderValue = value
-        let rpmSlider = NSSlider(value: 4000, minValue: 1000, maxValue: 6000, target: self, action: #selector(sliderChanged(_:)))
-        rpmSlider.isContinuous = true
-        slider = rpmSlider
-        let range = NSTextField(labelWithString: "1000 rpm")
-        range.textColor = .secondaryLabelColor
-        let maxRange = NSTextField(labelWithString: "6000 rpm")
-        maxRange.textColor = .secondaryLabelColor
-        let rangeRow = NSStackView(views: [range, NSView(), maxRange])
-        rangeRow.distribution = .fill
+        let sensorChoice = NSPopUpButton(frame: .zero, pullsDown: false)
+        sensorChoice.addItems(withTitles: sensors.map(\.name))
+        if sensors.isEmpty {
+            sensorChoice.addItem(withTitle: "Default")
+            sensorChoice.isEnabled = false
+        }
+        sensorChoice.target = self
+        sensorChoice.action = #selector(sensorChanged(_:))
+        sensorChoice.widthAnchor.constraint(equalToConstant: 220).isActive = true
+        sensorPopup = sensorChoice
+
+        let contentPopup = NSPopUpButton(frame: .zero, pullsDown: false)
+        contentPopup.addItems(withTitles: ["Temperature and fan speed", "Temperature only", "Fan speed only"])
+        contentPopup.target = self
+        contentPopup.action = #selector(menuBarContentChanged(_:))
+        contentPopup.widthAnchor.constraint(equalToConstant: 220).isActive = true
+        menuBarContentPopup = contentPopup
+
+        let twoLines = NSButton(checkboxWithTitle: "Display readings in two lines to save space", target: self, action: #selector(twoLinesChanged(_:)))
+        twoLinesCheck = twoLines
+
         let status = NSTextField(labelWithString: "")
         status.textColor = .secondaryLabelColor
         settingsStatus = status
 
-        let separator = NSBox()
-        separator.boxType = .separator
+        return formGrid([
+            ("", login),
+            ("Temperature unit:", temperaturePopup),
+            ("Sensor:", sensorChoice),
+            ("Menu bar:", contentPopup),
+            ("", twoLines),
+            ("", status)
+        ])
+    }
+
+    private func makeFanPane() -> NSView {
+        let current = NSTextField(labelWithString: "-- rpm")
+        current.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+        currentSpeed = current
+
+        let automatic = NSButton(radioButtonWithTitle: "Automatic", target: self, action: #selector(fanModeChanged(_:)))
+        let manual = NSButton(radioButtonWithTitle: "Manual", target: self, action: #selector(fanModeChanged(_:)))
+        automaticMode = automatic
+        manualMode = manual
+        let mode = NSStackView(views: [automatic, manual])
+        mode.spacing = 16
+
+        let value = NSTextField(labelWithString: "4000 rpm")
+        value.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .medium)
+        sliderValue = value
+
+        let rpmSlider = NSSlider(value: 4000, minValue: 1000, maxValue: 6000, target: self, action: #selector(sliderChanged(_:)))
+        rpmSlider.isContinuous = true
+        slider = rpmSlider
+        let minimum = NSTextField(labelWithString: "1000 rpm")
+        sliderMinimum = minimum
+        let maximum = NSTextField(labelWithString: "Max")
+        for label in [minimum, maximum] {
+            label.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+            label.textColor = .secondaryLabelColor
+        }
+        let range = NSStackView(views: [minimum, NSView(), maximum])
+        let control = NSStackView(views: [rpmSlider, range])
+        control.orientation = .vertical
+        control.spacing = 2
+        NSLayoutConstraint.activate([
+            rpmSlider.widthAnchor.constraint(equalToConstant: 260),
+            range.widthAnchor.constraint(equalTo: rpmSlider.widthAnchor)
+        ])
+
+        let hint = NSTextField(labelWithString: "Automatic lets macOS control the fan speed.")
+        hint.textColor = .secondaryLabelColor
+        hint.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+
+        return formGrid([("Current speed:", current), ("Mode:", mode), ("Target speed:", value), ("", control), ("", hint)])
+    }
+
+    private func makeAboutPane() -> NSView {
+        let icon = NSImageView(image: NSImage(systemSymbolName: "fan.fill", accessibilityDescription: "FanBar") ?? NSImage())
+        icon.symbolConfiguration = .init(pointSize: 36, weight: .regular)
+        icon.contentTintColor = .secondaryLabelColor
+        let name = NSTextField(labelWithString: "FanBar")
+        name.font = .systemFont(ofSize: 18, weight: .semibold)
+        let about = NSTextField(labelWithString: "Menu bar fan control for MacBook.")
+        about.textColor = .secondaryLabelColor
         let version = NSTextField(labelWithString: "Version \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.0")")
         version.textColor = .secondaryLabelColor
+        version.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         let github = NSButton(title: "View on GitHub", target: self, action: #selector(openGitHub))
         github.isBordered = false
-        github.bezelStyle = .inline
-        github.contentTintColor = .controlAccentColor
-        let footer = NSStackView(views: [version, NSView(), github])
-        footer.distribution = .fill
-        footer.alignment = .centerY
+        github.contentTintColor = .linkColor
 
-        let stack = NSStackView(views: [aboutTitle, about, generalTitle, loginRow, temperatureRow, presetTitle, value, rpmSlider, rangeRow, status, separator, footer])
+        let stack = NSStackView(views: [icon, name, about, version, github])
         stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 6
-        stack.edgeInsets = NSEdgeInsets(top: 20, left: 24, bottom: 16, right: 24)
-        stack.setCustomSpacing(2, after: aboutTitle)
-        stack.setCustomSpacing(16, after: about)
-        stack.setCustomSpacing(2, after: generalTitle)
-        stack.setCustomSpacing(4, after: loginRow)
-        stack.setCustomSpacing(12, after: temperatureRow)
-        stack.setCustomSpacing(2, after: presetTitle)
-        stack.setCustomSpacing(0, after: rpmSlider)
-        stack.setCustomSpacing(10, after: status)
-        stack.setCustomSpacing(8, after: separator)
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        window.contentView = stack
-        NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: window.contentView!.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: window.contentView!.trailingAnchor),
-            stack.topAnchor.constraint(equalTo: window.contentView!.topAnchor),
-            stack.bottomAnchor.constraint(equalTo: window.contentView!.bottomAnchor),
-            rpmSlider.widthAnchor.constraint(equalToConstant: 382),
-            rangeRow.widthAnchor.constraint(equalToConstant: 382),
-            loginRow.widthAnchor.constraint(equalToConstant: 382),
-            temperatureRow.widthAnchor.constraint(equalToConstant: 382),
-            status.widthAnchor.constraint(equalToConstant: 382),
-            separator.widthAnchor.constraint(equalToConstant: 382),
-            footer.widthAnchor.constraint(equalToConstant: 382)
-        ])
-        return window
+        stack.alignment = .centerX
+        stack.spacing = 4
+        stack.setCustomSpacing(8, after: icon)
+        stack.setCustomSpacing(8, after: version)
+        return stack
     }
 
     private func refreshSettingsControls() {
         loginItemCheck?.state = SMAppService.mainApp.status == .enabled ? .on : .off
         temperatureUnitPopup?.selectItem(at: usesFahrenheit ? 1 : 0)
-        let value = customRPM()
-        slider?.doubleValue = Double(value)
-        sliderValue?.stringValue = "\(value) rpm"
+        if let sensor = selectedSensor { sensorPopup?.selectItem(withTitle: sensor.name) }
+        menuBarContentPopup?.selectItem(at: menuBarContent.rawValue)
+        twoLinesCheck?.state = usesSingleLine ? .off : .on
+        twoLinesCheck?.isEnabled = menuBarContent == .both
+        slider?.minValue = Double(fanMinimumRPM)
+        slider?.maxValue = Double(fanMaximumRPM)
+        sliderMinimum?.stringValue = "\(fanMinimumRPM) rpm"
+        switch preset {
+        case .fullBlast: slider?.doubleValue = Double(fanMaximumRPM)
+        case .target(let rpm): slider?.doubleValue = Double(rpm)
+        case .automatic: break
+        }
+        if let slider { showTarget(sliderPreset(slider)) }
     }
 
-    private func customRPM() -> Int {
-        if case .target(let rpm) = preset { return rpm }
-        return 4000
+    // The hardware range when the SMC reports one; the helper only accepts 1000...8000.
+    private var fanMaximumRPM: Int {
+        metrics.maximumRPM >= 2000 ? min(Int(metrics.maximumRPM), 8000) : 6000
     }
 
-    @objc private func sliderChanged(_ sender: NSSlider) {
-        let rpm = Int(sender.doubleValue.rounded() / 100) * 100
-        sliderValue?.stringValue = "\(rpm) rpm"
-        preset = .target(rpm)
-        let result = apply(.target(rpm))
+    private var fanMinimumRPM: Int {
+        max(1000, min(Int(metrics.minimumRPM), fanMaximumRPM - 1000))
+    }
+
+    // Snaps to 100 rpm steps; the ends of the track are the fan's minimum and Max.
+    private func sliderPreset(_ slider: NSSlider) -> FanPreset {
+        if slider.doubleValue >= slider.maxValue - 50 { return .fullBlast }
+        if slider.doubleValue <= slider.minValue + 50 { return .target(fanMinimumRPM) }
+        return .target(min(Int((slider.doubleValue / 100).rounded()) * 100, fanMaximumRPM - 100))
+    }
+
+    private func showTarget(_ target: FanPreset) {
+        switch target {
+        case .fullBlast: sliderValue?.stringValue = "Max (\(fanMaximumRPM) rpm)"
+        case .target(let rpm): sliderValue?.stringValue = "\(rpm) rpm"
+        case .automatic: break
+        }
+    }
+
+    @objc private func fanModeChanged(_ sender: NSButton) {
+        let selected: FanPreset = sender === automaticMode ? .automatic : slider.map(sliderPreset) ?? .target(4000)
+        guard selected != preset else { return }
+        preset = selected
+        let result = apply(selected)
         if result != 0 { showControlError(result) }
         updateChecks()
     }
 
-    @objc private func toggleLoginItem(_ sender: NSSwitch) {
+    @objc private func sliderChanged(_ sender: NSSlider) {
+        let selected = sliderPreset(sender)
+        showTarget(selected)
+        guard selected != preset else { return }
+        // Force Touch trackpads tick when the thumb snaps to Max or to the minimum.
+        if selected == .fullBlast || selected == .target(fanMinimumRPM) {
+            NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now)
+        }
+        preset = selected
+        let result = apply(selected)
+        if result != 0 { showControlError(result) }
+        updateChecks()
+    }
+
+    @objc private func toggleLoginItem(_ sender: NSButton) {
         do {
             if sender.state == .on { try SMAppService.mainApp.register() }
             else { try SMAppService.mainApp.unregister() }
-            settingsStatus?.stringValue = "Launch at login updated."
+            settingsStatus?.stringValue = ""
         } catch {
             sender.state = .off
             settingsStatus?.stringValue = "Launch at login requires a bundled FanBar.app."
@@ -342,16 +516,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         refresh()
     }
 
+    @objc private func sensorChanged(_ sender: NSPopUpButton) {
+        UserDefaults.standard.set(sender.titleOfSelectedItem, forKey: "temperatureSensor")
+        refresh()
+    }
+
+    @objc private func menuBarContentChanged(_ sender: NSPopUpButton) {
+        UserDefaults.standard.set(sender.indexOfSelectedItem, forKey: "menuBarContent")
+        twoLinesCheck?.isEnabled = menuBarContent == .both
+        refresh()
+    }
+
+    @objc private func twoLinesChanged(_ sender: NSButton) {
+        UserDefaults.standard.set(sender.state == .off, forKey: "usesSingleLine")
+        refresh()
+    }
+
     @objc private func quit() { NSApp.terminate(nil) }
 
     private func refresh() {
-        guard fanbar_read_metrics(&metrics) == 0 else {
-            setTitle("--°\(usesFahrenheit ? "F" : "C")\n-- rpm")
-            return
-        }
-        let temperature = usesFahrenheit ? (metrics.temperatureC * 9 / 5 + 32) : metrics.temperatureC
         let unit = usesFahrenheit ? "F" : "C"
-        setTitle(String(format: "%.0f°%@\n%d rpm", temperature, unit, metrics.rpm))
+        var temperatureText = "--°\(unit)"
+        var rpmText = "-- rpm"
+        let metricsRead = fanbar_read_metrics(&metrics) == 0
+        if metricsRead { rpmText = "\(metrics.rpm) rpm" }
+        if let celsius = selectedSensor?.read() ?? (metricsRead ? metrics.temperatureC : nil) {
+            let temperature = usesFahrenheit ? (celsius * 9 / 5 + 32) : celsius
+            temperatureText = String(format: "%.0f°%@", temperature, unit)
+        }
+        currentSpeed?.stringValue = rpmText
+        switch menuBarContent {
+        case .both: setTitle(temperatureText + (usesSingleLine ? readoutSeparator : "\n") + rpmText)
+        case .temperature: setTitle(temperatureText)
+        case .fanSpeed: setTitle(rpmText)
+        }
         updateChecks()
     }
 
@@ -359,30 +557,56 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         UserDefaults.standard.bool(forKey: "usesFahrenheit")
     }
 
+    private var selectedSensor: TemperatureSensor? {
+        let name = UserDefaults.standard.string(forKey: "temperatureSensor")
+        return sensors.first { $0.name == name } ?? sensors.first
+    }
+
+    private var usesSingleLine: Bool {
+        UserDefaults.standard.bool(forKey: "usesSingleLine")
+    }
+
+    private var menuBarContent: MenuBarContent {
+        MenuBarContent(rawValue: UserDefaults.standard.integer(forKey: "menuBarContent")) ?? .both
+    }
+
+    private let readoutSeparator = "  |  "
+
     private func setTitle(_ title: String) {
+        // Two stacked lines need a small font and tight lines to fit the menu bar height.
+        let stacked = title.contains("\n")
+        let font = NSFont.monospacedDigitSystemFont(ofSize: stacked ? 9 : 12, weight: .regular)
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = .center
-        paragraph.lineSpacing = -2
-        readoutField.attributedStringValue = NSAttributedString(
+        if stacked {
+            paragraph.minimumLineHeight = 10
+            paragraph.maximumLineHeight = 10
+        }
+        let attributed = NSMutableAttributedString(
             string: title,
             attributes: [
-                .font: NSFont.systemFont(ofSize: 9, weight: .regular),
+                .font: font,
                 .foregroundColor: NSColor.labelColor,
                 .paragraphStyle: paragraph
             ]
         )
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 9, weight: .regular)
-        ]
-        let width = title
-            .split(separator: "\n", omittingEmptySubsequences: false)
-            .map { (String($0) as NSString).size(withAttributes: attributes).width }
-            .max() ?? 0
-        statusItem.length = max(40, ceil(width) + 4)
+        let separator = (title as NSString).range(of: readoutSeparator)
+        if separator.location != NSNotFound {
+            attributed.addAttribute(.foregroundColor, value: NSColor.tertiaryLabelColor, range: separator)
+        }
+        readoutField.attributedStringValue = attributed
+        // Fit the field to its text so centerY centers one line as well as two.
+        readoutHeight.constant = ceil(readoutField.cell?.cellSize.height ?? 22)
+        // Size the item to the drawn text; the field stays centered on it.
+        statusItem.length = ceil(attributed.size().width) + 4
     }
 
     private func updateChecks() {
         for (itemPreset, item) in presetItems { item.state = itemPreset == preset ? .on : .off }
+        automaticMode?.state = preset == .automatic ? .on : .off
+        manualMode?.state = preset == .automatic ? .off : .on
+        slider?.isEnabled = preset != .automatic
+        sliderValue?.textColor = preset == .automatic ? .disabledControlTextColor : .labelColor
     }
 }
 
@@ -394,6 +618,9 @@ if let index = CommandLine.arguments.firstIndex(of: "--set-rpm"),
    let rpm = UInt32(CommandLine.arguments[index + 1]) {
     exit(Int32(fanbar_set_target_rpm(rpm)))
 }
+
+// Spacing is split across both sides (system default 16 = 8pt each). Registered defaults apply to FanBar only and are not persisted.
+UserDefaults.standard.register(defaults: ["NSStatusItemSpacing": 6])
 
 let app = NSApplication.shared
 let delegate = AppDelegate()
