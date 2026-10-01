@@ -25,7 +25,7 @@ Things that are not obvious from the code. Releasing is in [release.md](release.
 - After an update the daemon keeps running the old binary. On its first fan
   command the app compares the daemon's `version` with its own
   `CFBundleVersion` and sends `exit`; launchd restarts it from the new bundle.
-- The daemon accepts `auto`, `max`, `rpm <1000–8000>`, `version`, and `exit`,
+- The daemon accepts `auto`, `max`, `rpm <1000–10000>`, `version`, and `exit`,
   and applies fan commands to every fan, each clamped to its own range.
 - On first start it removes the helper FanBar 1.0.0 installed with an admin
   password (`com.webtiara.fanbar.helper`).

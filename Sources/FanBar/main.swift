@@ -38,8 +38,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private lazy var sensors = TemperatureSensor.available()
     private var menuBarContentPopup: NSPopUpButton?
     private var twoLinesCheck: NSButton?
-    private var automaticMode: NSButton?
-    private var manualMode: NSButton?
+    private var modeControl: NSSegmentedControl?
+    private var automaticNote: NSView?
+    private var manualControls: NSView?
     private var slider: NSSlider?
     private var sliderValue: NSTextField?
     private var sliderMinimum: NSTextField?
@@ -366,18 +367,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private func makeFanPane() -> NSView {
         let fans = makeFanTable()
 
-        let automatic = NSButton(radioButtonWithTitle: "Automatic", target: self, action: #selector(fanModeChanged(_:)))
-        let manual = NSButton(radioButtonWithTitle: "Manual", target: self, action: #selector(fanModeChanged(_:)))
-        automaticMode = automatic
-        manualMode = manual
-        let mode = NSStackView(views: [automatic, manual])
-        mode.spacing = 16
+        let mode = NSSegmentedControl(labels: ["Automatic", "Manual"], trackingMode: .selectOne, target: self, action: #selector(fanModeChanged(_:)))
+        mode.segmentDistribution = .fillEqually
+        mode.widthAnchor.constraint(equalToConstant: 240).isActive = true
+        modeControl = mode
 
-        let value = NSTextField(labelWithString: "4000 rpm")
-        value.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .medium)
+        // Automatic: one line, nothing to adjust.
+        let note = NSTextField(wrappingLabelWithString: "macOS adjusts the fans to keep your Mac cool.")
+        note.textColor = .secondaryLabelColor
+        note.preferredMaxLayoutWidth = 300
+        automaticNote = note
+
+        // Manual: the target, the slider, and what holding it means.
+        let value = NSTextField(labelWithString: "3000 rpm")
+        value.font = .monospacedDigitSystemFont(ofSize: 22, weight: .semibold)
         sliderValue = value
 
-        let rpmSlider = NSSlider(value: 4000, minValue: 1000, maxValue: 6000, target: self, action: #selector(sliderChanged(_:)))
+        let rpmSlider = NSSlider(value: 3000, minValue: 1000, maxValue: 6000, target: self, action: #selector(sliderChanged(_:)))
         rpmSlider.isContinuous = true
         slider = rpmSlider
         let minimum = NSTextField(labelWithString: "1000 rpm")
@@ -385,23 +391,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         let maximum = NSTextField(labelWithString: "6000 rpm")
         sliderMaximum = maximum
         for label in [minimum, maximum] {
-            label.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+            label.font = .monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
             label.textColor = .secondaryLabelColor
         }
         let range = NSStackView(views: [minimum, NSView(), maximum])
-        let control = NSStackView(views: [rpmSlider, range])
-        control.orientation = .vertical
-        control.spacing = 2
+
+        let hold = NSTextField(wrappingLabelWithString: "Every fan holds this speed until you switch to Automatic or quit FanBar.")
+        hold.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        hold.textColor = .secondaryLabelColor
+        hold.preferredMaxLayoutWidth = 300
+
+        let manual = NSStackView(views: [value, rpmSlider, range, hold])
+        manual.orientation = .vertical
+        manual.alignment = .leading
+        manual.spacing = 4
+        manual.setCustomSpacing(6, after: value)
+        manual.setCustomSpacing(10, after: range)
         NSLayoutConstraint.activate([
-            rpmSlider.widthAnchor.constraint(equalToConstant: 260),
+            rpmSlider.widthAnchor.constraint(equalToConstant: 300),
             range.widthAnchor.constraint(equalTo: rpmSlider.widthAnchor)
         ])
+        manualControls = manual
 
-        let hint = NSTextField(labelWithString: "Automatic lets macOS control the fan speed.")
-        hint.textColor = .secondaryLabelColor
-        hint.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        let detail = NSStackView(views: [note, manual])
+        detail.orientation = .vertical
+        detail.alignment = .leading
+        detail.detachesHiddenViews = true
+        // Same width in both modes, so the form doesn't shift when switching.
+        detail.widthAnchor.constraint(equalToConstant: 300).isActive = true
 
-        return formGrid([("Fans:", fans), ("Mode:", mode), ("Target speed:", value), ("", control), ("", hint)])
+        let grid = formGrid([("Fans:", fans), ("Control:", mode), ("", detail)])
+        grid.row(at: 2).topPadding = -4
+        grid.row(at: 2).yPlacement = .top
+        return grid
     }
 
     /// One row per fan: name, current speed, and the most it can do.
@@ -501,14 +523,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         switch preset {
         case .fullBlast: slider?.doubleValue = Double(fanMaximumRPM)
         case .target(let rpm): slider?.doubleValue = Double(rpm)
-        case .automatic: break
+        case .automatic: slider?.doubleValue = Double(rememberedTarget)
         }
         if let slider { showTarget(sliderPreset(slider)) }
+        updateChecks()
     }
 
-    // The hardware range when the SMC reports one; the helper only accepts 1000...8000.
+    // The hardware range when the SMC reports one; the helper only accepts 1000...10000.
     private var fanMaximumRPM: Int {
-        metrics.maximumRPM >= 2000 ? min(Int(metrics.maximumRPM), 8000) : 6000
+        metrics.maximumRPM >= 2000 ? min(Int(metrics.maximumRPM), 10000) : 6000
     }
 
     private var fanMinimumRPM: Int {
@@ -532,8 +555,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         }
     }
 
-    @objc private func fanModeChanged(_ sender: NSButton) {
-        let selected: FanPreset = sender === automaticMode ? .automatic : slider.map(sliderPreset) ?? .target(4000)
+    /// The last manual speed, so switching back to Manual picks up where you left off.
+    private var rememberedTarget: Int {
+        get {
+            let saved = UserDefaults.standard.integer(forKey: "manualTargetRPM")
+            let value = saved > 0 ? saved : (fanMinimumRPM + fanMaximumRPM) / 2 / 100 * 100
+            return min(max(value, fanMinimumRPM), fanMaximumRPM)
+        }
+        set { UserDefaults.standard.set(newValue, forKey: "manualTargetRPM") }
+    }
+
+    @objc private func fanModeChanged(_ sender: NSSegmentedControl) {
+        let selected: FanPreset = sender.selectedSegment == 0 ? .automatic : .target(rememberedTarget)
         guard selected != preset else { return }
         preset = selected
         apply(selected)
@@ -548,6 +581,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         if selected == .target(fanMaximumRPM) || selected == .target(fanMinimumRPM) {
             NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now)
         }
+        if case .target(let rpm) = selected { rememberedTarget = rpm }
         preset = selected
         apply(selected)
         updateChecks()
@@ -666,12 +700,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     private func updateChecks() {
         for (itemPreset, item) in presetItems { item.state = itemPreset == preset ? .on : .off }
-        automaticMode?.state = preset == .automatic ? .on : .off
-        manualMode?.state = preset == .automatic ? .off : .on
         let hasFans = metrics.fanCount > 0
-        manualMode?.isEnabled = hasFans
-        slider?.isEnabled = hasFans && preset != .automatic
-        sliderValue?.textColor = preset == .automatic ? .disabledControlTextColor : .labelColor
+        let manual = preset != .automatic
+        modeControl?.selectedSegment = manual ? 1 : 0
+        modeControl?.setEnabled(hasFans, forSegment: 1)
+        automaticNote?.isHidden = manual
+        manualControls?.isHidden = !manual || !hasFans
     }
 }
 

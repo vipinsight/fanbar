@@ -5,7 +5,7 @@ import SMCBridge
 // allows FanBar in System Settings (SMAppService), and keeps it alive.
 //
 // Commands, one per connection, applied to every fan: `auto`, `max` (each fan
-// to its own maximum), `rpm <1000-8000>`, `version` (the app
+// to its own maximum), `rpm <1000-10000>`, `version` (the app
 // bundle's CFBundleVersion, so the app can spot a stale daemon after an
 // update), and `exit` (launchd restarts it from the current bundle).
 
@@ -88,7 +88,7 @@ func handle(_ command: String, from pid: pid_t?) -> String {
     case "version":
         return version
     default:
-        guard command.hasPrefix("rpm "), let value = UInt32(command.dropFirst(4)), value >= 1000, value <= 8000 else { return "-1" }
+        guard command.hasPrefix("rpm "), let value = UInt32(command.dropFirst(4)), value >= 1000, value <= 10000 else { return "-1" }
         if let pid { watch(pid) }
         return "\(fanbar_set_target_rpm(value))"
     }
