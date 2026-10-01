@@ -67,11 +67,7 @@ ditto -c -k --keepParent FanBar.app "$ZIP"
 # 3. The disk image for new installs. Gatekeeper rejects an unnotarized image
 # even when the app inside it is notarized.
 DMG="$DIST/FanBar-$VERSION.dmg"
-STAGE=$(mktemp -d)
-ditto FanBar.app "$STAGE/FanBar.app"
-ln -s /Applications "$STAGE/Applications"
-hdiutil create -volname FanBar -srcfolder "$STAGE" -format UDZO -ov "$DMG"
-rm -rf "$STAGE"
+scripts/make-dmg.sh FanBar.app "$DMG"
 codesign --force --sign "$APPLE_SIGNING_IDENTITY" --timestamp "$DMG"
 notarize "$DMG"
 xcrun stapler staple "$DMG"
