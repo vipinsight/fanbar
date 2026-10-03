@@ -22,7 +22,7 @@ The menu bar shows the selected sensor's temperature and the fan's measured RPM,
 - **Fan control**: Automatic, Full blast, fixed presets (1000–6000 rpm), or a custom target from the slider, which spans your fan's hardware range and ends at Max
 - **Settings**: launch at login, °C / °F, menu bar layout
 - **Automatic updates**: checks GitHub releases every 12 hours and installs signed, notarized updates
-- **Safe defaults**: restores Automatic mode on quit
+- **Safe defaults**: restores Automatic mode on quit and before the Mac sleeps
 
 ## Install
 

@@ -64,6 +64,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         updates.canRestartNow = { [weak self] in self?.preset == .automatic }
         updates.onAvailableChange = { [weak self] _ in self?.showUpdateAvailable() }
         updates.start()
+        // A pinned fan shouldn't keep spinning through standby: hand the fans
+        // back to macOS before the Mac sleeps. Sleep waits for this handler.
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self, selector: #selector(workspaceWillSleep), name: NSWorkspace.willSleepNotification, object: nil)
         // Say where FanBar went, except at login when nobody asked for it.
         if !atLogin {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
@@ -136,6 +140,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     func applicationWillTerminate(_ notification: Notification) {
         timer?.invalidate()
         if preset != .automatic { helper.restoreAutomaticIfRunning() }
+    }
+
+    /// Back to Automatic before sleep, synchronously so it lands before the
+    /// Mac is gone. The fans stay Automatic after wake; pick Manual again if wanted.
+    @objc private func workspaceWillSleep() {
+        guard preset != .automatic else { return }
+        preset = .automatic
+        helper.restoreAutomaticIfRunning()
+        updateChecks()
+        refreshSettingsControls()
     }
 
     private func configureStatusItem() {
@@ -396,7 +410,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         }
         let range = NSStackView(views: [minimum, NSView(), maximum])
 
-        let hold = NSTextField(wrappingLabelWithString: "Every fan holds this speed until you switch to Automatic or quit FanBar.")
+        let hold = NSTextField(wrappingLabelWithString: "Every fan holds this speed until you switch to Automatic, the Mac sleeps, or you quit FanBar.")
         hold.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         hold.textColor = .secondaryLabelColor
         hold.preferredMaxLayoutWidth = 300
